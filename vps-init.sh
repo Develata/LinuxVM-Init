@@ -50,6 +50,7 @@ ensure_log
 init_summary
 require_root
 ensure_state_dirs
+ensure_global_lvm_command || true
 say '请保持当前 SSH 会话，不要中断。' 'Keep your current SSH session open.'
 
 if [ -z "$DISTRO_ID" ]; then

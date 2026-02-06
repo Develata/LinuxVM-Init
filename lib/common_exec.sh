@@ -36,6 +36,37 @@ is_installed() {
   command -v "$1" >/dev/null 2>&1
 }
 
+ensure_global_lvm_command() {
+  local target_cmd source_script current_target
+  target_cmd='/usr/local/bin/lvm'
+  source_script="$BASE_DIR/vps-init.sh"
+
+  if [ ! -f "$source_script" ]; then
+    return 1
+  fi
+
+  if [ ! -e "$target_cmd" ]; then
+    chmod +x "$source_script" 2>/dev/null || true
+    ln -sf "$source_script" "$target_cmd"
+    say '已自动安装全局命令：lvm' 'Global command installed automatically: lvm'
+    return 0
+  fi
+
+  if [ -L "$target_cmd" ]; then
+    current_target="$(readlink -f "$target_cmd" 2>/dev/null || true)"
+    if [ "$current_target" = "$source_script" ]; then
+      return 0
+    fi
+    say "检测到已存在 lvm 命令链接到：$current_target" "Detected existing lvm symlink to: $current_target"
+    say '请手动处理后再重试（避免覆盖你现有命令）。' 'Please resolve it manually to avoid overriding existing command.'
+    return 1
+  fi
+
+  say '检测到系统已有非软链接的 lvm 命令。' 'Detected existing non-symlink lvm command.'
+  say '请手动处理后再重试（避免误删系统命令）。' 'Please resolve it manually to avoid deleting system command.'
+  return 1
+}
+
 is_valid_port() {
   local port="$1"
   [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]

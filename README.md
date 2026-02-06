@@ -39,10 +39,26 @@ chmod +x vps-init.sh
 sudo bash vps-init.sh
 ```
 
+也可以安装全局命令 `lvm`（推荐）：
+
+```bash
+sudo bash install.sh
+lvm
+```
+
+说明：若系统中已存在非软链接的 `lvm` 命令，安装脚本会拒绝覆盖并提示你手动处理。
+脚本启动时也会尝试自动安装 `lvm`；若检测到已存在 `lvm` 命令，会提示你手动处理，不会强制覆盖。
+
 4. SSH 相关操作完成后，先在新终端测试再断开旧连接：
 
 ```bash
 ssh -p 新端口 用户名@服务器IP
+```
+
+如需卸载全局命令：
+
+```bash
+sudo bash uninstall.sh
 ```
 
 ## 批处理模式（非交互）
@@ -86,6 +102,8 @@ sudo bash vps-init.sh --non-interactive --distro ubuntu24
 
 ## 项目结构
 - `vps-init.sh`：主入口脚本（菜单与流程）
+- `install.sh`：安装全局命令 `lvm`
+- `uninstall.sh`：卸载全局命令 `lvm`
 - `lib/common.sh`：公共入口（聚合通用方法）
 - `lib/common_ui.sh`：交互与提示
 - `lib/common_exec.sh`：命令执行、校验、来源 IP 检测
