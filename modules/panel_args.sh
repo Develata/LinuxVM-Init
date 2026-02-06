@@ -110,6 +110,20 @@ select_language() {
 }
 
 select_distro() {
+  local detected=''
+  detected="$(detect_current_distro)"
+
+  if [ -n "$detected" ]; then
+    say "自动检测到系统：$detected" "Detected system: $detected"
+    ask '是否使用该检测结果？[Y/n]（回车默认使用）:' 'Use detected system? [Y/n] (Enter for yes):' use_detect
+    case "$use_detect" in
+      ''|y|Y|yes|YES)
+      DISTRO_ID="$detected"
+      return 0
+      ;;
+    esac
+  fi
+
   say '请选择当前系统版本（必须手动选择）' 'Please choose your system (manual selection required).'
   printf '%s\n' '1) debian10'
   printf '%s\n' '2) debian11'
@@ -129,6 +143,33 @@ select_distro() {
     *) DISTRO_ID='' ;;
   esac
   [ -n "$DISTRO_ID" ] || { say '选择无效，请重新选择。' 'Invalid choice. Please select again.'; select_distro; }
+}
+
+detect_current_distro() {
+  if [ ! -r /etc/os-release ]; then
+    printf '%s' ''
+    return 0
+  fi
+
+  local os_id os_ver major mapped
+  os_id="$(awk -F= '/^ID=/{gsub(/"/,"",$2); print $2}' /etc/os-release)"
+  os_ver="$(awk -F= '/^VERSION_ID=/{gsub(/"/,"",$2); print $2}' /etc/os-release)"
+  major="${os_ver%%.*}"
+  mapped=''
+
+  case "$os_id" in
+    debian) mapped="debian${major}" ;;
+    ubuntu) mapped="ubuntu${major}" ;;
+  esac
+
+  case "$mapped" in
+    debian10|debian11|debian12|debian13|ubuntu22|ubuntu24)
+      printf '%s' "$mapped"
+      ;;
+    *)
+      printf '%s' ''
+      ;;
+  esac
 }
 
 check_distro_consistency() {
