@@ -4,17 +4,48 @@ CURRENT_VERSION='unknown'
 LATEST_VERSION='unknown'
 VERSION_INFO_LOADED='0'
 
+read_local_version() {
+  if [ -f "$BASE_DIR/VERSION" ]; then
+    tr -d ' \t\r\n' <"$BASE_DIR/VERSION"
+  else
+    printf '%s' ''
+  fi
+}
+
+read_remote_version() {
+  if [ -d "$BASE_DIR/.git" ] && is_installed git; then
+    git -C "$BASE_DIR" show origin/master:VERSION 2>/dev/null | tr -d ' \t\r\n'
+  else
+    printf '%s' ''
+  fi
+}
+
 refresh_version_info() {
   VERSION_INFO_LOADED='1'
   CURRENT_VERSION='unknown'
   LATEST_VERSION='unknown'
 
+  local local_ver remote_ver
+  local_ver="$(read_local_version)"
+
   if [ -d "$BASE_DIR/.git" ] && is_installed git; then
     git -C "$BASE_DIR" fetch -q origin >/dev/null 2>&1 || true
-    CURRENT_VERSION="$(git -C "$BASE_DIR" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
-    if git -C "$BASE_DIR" rev-parse --short origin/master >/dev/null 2>&1; then
+    remote_ver="$(read_remote_version)"
+
+    if [ -n "$local_ver" ]; then
+      CURRENT_VERSION="$local_ver"
+    else
+      CURRENT_VERSION="$(git -C "$BASE_DIR" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+    fi
+
+    if [ -n "$remote_ver" ]; then
+      LATEST_VERSION="$remote_ver"
+    elif git -C "$BASE_DIR" rev-parse --short origin/master >/dev/null 2>&1; then
       LATEST_VERSION="$(git -C "$BASE_DIR" rev-parse --short origin/master 2>/dev/null || printf 'unknown')"
     fi
+  elif [ -n "$local_ver" ]; then
+    CURRENT_VERSION="$local_ver"
+    LATEST_VERSION="$local_ver"
   fi
 }
 

@@ -117,6 +117,7 @@ sudo bash vps-init.sh --non-interactive --distro ubuntu24
 
 ## 项目结构
 - `vps-init.sh`：主入口脚本（菜单与流程）
+- `VERSION`：脚本语义化版本号（例如 `v1.0.0`）
 - `install.sh`：安装全局命令 `lvm`
 - `uninstall.sh`：卸载全局命令 `lvm`
 - `lib/common.sh`：公共入口（聚合通用方法）
@@ -133,6 +134,10 @@ sudo bash vps-init.sh --non-interactive --distro ubuntu24
 ## 执行反馈
 - 退出脚本时会输出本次执行汇总（成功/跳过/失败）。
 - 退出脚本时会输出常见回滚命令提示。
+
+## 版本说明
+- 面板默认优先显示 `VERSION` 文件中的版本号（如 `v1.0.0`）。
+- 若缺少 `VERSION` 文件，才会回退显示 git 短哈希。
 
 ## 发布前标准命令
 每次准备发布前，统一执行以下自检命令：
