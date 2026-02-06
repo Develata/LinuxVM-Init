@@ -12,6 +12,10 @@ docker_write_log_limit() {
     "max-size": "${max_size}"
   }
 }
+EOF
+  run_cmd 'systemctl daemon-reload'
+  run_cmd 'systemctl restart docker'
+}
 
 docker_install_compose() {
   if docker compose version >/dev/null 2>&1; then
@@ -34,10 +38,6 @@ docker_install_compose() {
 
   say 'Docker Compose 安装失败，请检查网络或软件源。' 'Docker Compose install failed. Check network or apt sources.'
   return 1
-}
-EOF
-  run_cmd 'systemctl daemon-reload'
-  run_cmd 'systemctl restart docker'
 }
 
 docker_set_proxy() {

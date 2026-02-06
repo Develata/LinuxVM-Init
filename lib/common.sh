@@ -49,6 +49,7 @@ ask() {
   local en="$2"
   local var_name="$3"
   local prompt
+  local value
   if [ "$LANG_CHOICE" = 'zh' ]; then
     prompt="$zh"
   else
@@ -131,6 +132,7 @@ run_cmd() {
   printf '>> %s\n' "$cmd"
   log_line ">> $cmd"
   bash -c "$cmd" 2>&1 | tee -a "$LOG_FILE"
+  return "${PIPESTATUS[0]}"
 }
 
 require_root() {
