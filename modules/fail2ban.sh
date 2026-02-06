@@ -5,9 +5,14 @@ write_fail2ban_jail() {
   local maxretry="$2"
   local findtime="$3"
   local bantime="$4"
+  local source_ip="$5"
+  local ignore_list='127.0.0.1/8'
+  if [ -n "$source_ip" ]; then
+    ignore_list="$ignore_list $source_ip"
+  fi
   cat > /etc/fail2ban/jail.local <<EOF
 [DEFAULT]
-ignoreip = 127.0.0.1/8
+ignoreip = ${ignore_list}
 
 [sshd]
 enabled = true
@@ -29,7 +34,9 @@ fail2ban_setup() {
   local maxretry='10'
   local findtime='300'
   local bantime='86400'
+  local source_ip
   f2b_port="$(effective_ssh_port)"
+  source_ip="$(detect_source_ip)"
 
   ask '最大重试次数(默认10)：' 'Max retry (default 10):' in_maxretry
   if [[ "$in_maxretry" =~ ^[0-9]+$ ]] && [ "$in_maxretry" -gt 0 ]; then
@@ -45,7 +52,8 @@ fail2ban_setup() {
   fi
 
   run_cmd 'apt install -y fail2ban'
-  write_fail2ban_jail "$f2b_port" "$maxretry" "$findtime" "$bantime"
+  snapshot_create 'before-fail2ban-setup'
+  write_fail2ban_jail "$f2b_port" "$maxretry" "$findtime" "$bantime" "$source_ip"
   run_cmd 'systemctl restart fail2ban'
   run_cmd 'systemctl enable fail2ban'
   run_cmd 'fail2ban-client status sshd'

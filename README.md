@@ -10,6 +10,15 @@
 - 每个可能有风险的步骤都会提前提示后果。
 - 仅支持 Debian 系：`debian10/11/12/13`、`ubuntu22/ubuntu24`。
 
+## 脚本会做什么
+- 系统初始化：更新软件包、安装常用工具、可选创建普通用户并加入 sudo。
+- SSH 安全：可选修改 SSH 端口、调整 root/密码/密钥登录策略，并在变更后给出测试命令。
+- 防火墙：支持 `ufw` 与 `iptables`，启用前强制检测并放行 SSH 端口。
+- Fail2ban：可安装并配置防爆破策略，支持手动封禁/解封 IP。
+- 运行环境：可选安装 Docker、配置 Docker 日志限制、配置 Swap、启用自动安全更新。
+- 常驻运维：提供管理中心（SSH/防火墙/fail2ban/Docker/Swap/自动更新）可长期反复使用。
+- 安全兜底：关键变更前会创建快照，支持按快照 ID 回滚；并记录执行日志与结果汇总。
+
 ## 使用方式
 仓库地址：`https://github.com/Develata/LinuxVM-Init.git`
 
@@ -34,20 +43,39 @@ sudo bash vps-init.sh
 ssh -p 新端口 用户名@服务器IP
 ```
 
+## 批处理模式（非交互）
+用于自动化部署（默认执行推荐子集，SSH 仍建议人工处理）：
+
+```bash
+sudo bash vps-init.sh --non-interactive --distro ubuntu24
+```
+
+可选参数：
+- `--lang en`：英文输出
+- `--yes`：自动确认
+- 环境开关：`NI_RUN_SYSTEM_UPDATE=1 NI_RUN_TOOLS=1 NI_RUN_FIREWALL=0 NI_RUN_FAIL2BAN=0 NI_RUN_UNATTENDED=1`
+
 ## 关键说明
 - SSH 端口可手动输入或随机生成（`20000–60999`）。
 - SSH 端口会检测占用状态，并过滤常见保留黑名单端口。
+- SSH 相关高风险操作默认跳过，需手动确认后才执行。
 - 选择密钥登录后，会强制关闭密码登录。
 - 防火墙支持 `ufw` 与 `iptables` 两种方案可选。
+- 防火墙模式会持久化记录在 `/etc/linuxvm-init/state.env`。
+- 防火墙与 fail2ban 变更时会优先保护当前来源 IP（可检测时）。
 - Swap 会先做磁盘判断：当 `磁盘 < 内存 * 4` 时自动跳过。
 
 ## 常驻管理能力
 - 菜单 `13) 常驻管理中心` 可反复进入，不只是一次性初始化。
+- SSH 管理：可查看配置摘要、单独改端口、改 root/密码/密钥登录策略、查看失败日志。
 - 防火墙管理：可按需放行/删除端口（`ufw` 或 `iptables`）。
 - fail2ban 管理：可修改 `bantime/findtime/maxretry`，并手动封禁或解封 IP。
 - Docker 管理：可查看状态、重启服务、调整日志限制。
 - Swap 管理：可查看状态、重配或删除 swapfile。
 - 自动安全更新管理：可启用或关闭 unattended-upgrades。
+- 快照与回滚：可按时间戳创建/查看/恢复系统关键配置。
+- 巡检与每日简报：支持 cron 每日报告与手动巡检。
+- 快照自动清理：默认仅保留最近 14 天快照，旧快照会在创建新快照时自动清理。
 
 ## 项目结构
 - `vps-init.sh`：主入口脚本（菜单与流程）

@@ -43,6 +43,9 @@ choose_ssh_port() {
 }
 
 ssh_configure() {
+  if ! confirm '高风险操作：是否继续 SSH 设置？[y/N]' 'High-risk action: continue SSH settings? [y/N]'; then
+    return 2
+  fi
   say '风险提示：改 SSH 端口且未放行会断开连接。' 'Warning: changing SSH port without firewall allowance can cut off access.'
   say '请保持当前 SSH 会话，不要中断。' 'Keep your current SSH session open.'
 
@@ -62,6 +65,7 @@ ssh_configure() {
   fi
 
   backup_file '/etc/ssh/sshd_config'
+  snapshot_create 'before-ssh-configure'
   set_sshd_option 'Port' "$SSH_PORT"
   if is_installed ufw; then
     run_cmd "ufw allow $SSH_PORT"
@@ -87,18 +91,30 @@ EOF
     fi
   fi
 
-  if ! validate_sshd_config; then
-    say 'SSH 配置语法校验失败，已回滚到备份。' 'SSH config validation failed, rolled back to backup.'
-    rollback_sshd_config
-    return 1
-  fi
-
-  if ! restart_ssh; then
-    say 'SSH 服务重启失败，已回滚到备份并尝试恢复服务。' 'SSH restart failed, rolled back and trying to recover service.'
-    rollback_sshd_config
-    restart_ssh || true
+  if ! apply_sshd_changes; then
     return 1
   fi
   say 'SSH 服务重启成功。' 'SSH service restarted successfully.'
+  print_ssh_test_hint
+}
+
+ssh_change_port_only() {
+  if ! confirm '高风险操作：是否继续修改 SSH 端口？[y/N]' 'High-risk action: continue changing SSH port? [y/N]'; then
+    return 2
+  fi
+  say '风险提示：改 SSH 端口且未放行会断开连接。' 'Warning: changing SSH port without firewall allowance can cut off access.'
+  choose_ssh_port || return $?
+
+  backup_file '/etc/ssh/sshd_config'
+  snapshot_create 'before-ssh-port-change'
+  set_sshd_option 'Port' "$SSH_PORT"
+  if is_installed ufw; then
+    run_cmd "ufw allow $SSH_PORT"
+  fi
+
+  if ! apply_sshd_changes; then
+    return 1
+  fi
+  say 'SSH 端口已更新并重启服务成功。' 'SSH port updated and service restarted successfully.'
   print_ssh_test_hint
 }

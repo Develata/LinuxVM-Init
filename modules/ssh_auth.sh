@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 
 ssh_key_login() {
+  if ! confirm '高风险操作：是否继续配置 SSH 密钥登录？[y/N]' 'High-risk action: continue SSH key login setup? [y/N]'; then
+    return 2
+  fi
   say '风险提示：启用密钥登录将强制关闭密码登录。' 'Warning: enabling key login will disable password login.'
   local target_user
   if [ -n "${SUDO_USER:-}" ]; then
@@ -42,17 +45,10 @@ ssh_key_login() {
   chmod 600 "$user_home/.ssh/authorized_keys"
 
   backup_file '/etc/ssh/sshd_config'
+  snapshot_create 'before-ssh-key-login'
   set_sshd_option 'PasswordAuthentication' 'no'
   set_sshd_option 'PubkeyAuthentication' 'yes'
-  if ! validate_sshd_config; then
-    say 'SSH 配置语法校验失败，已回滚到备份。' 'SSH config validation failed, rolled back to backup.'
-    rollback_sshd_config
-    return 1
-  fi
-  if ! restart_ssh; then
-    say 'SSH 服务重启失败，已回滚到备份并尝试恢复服务。' 'SSH restart failed, rolled back and trying to recover service.'
-    rollback_sshd_config
-    restart_ssh || true
+  if ! apply_sshd_changes; then
     return 1
   fi
   say '已启用密钥登录并禁用密码登录。' 'Key login enabled and password login disabled.'

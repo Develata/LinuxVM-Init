@@ -1,5 +1,48 @@
 #!/usr/bin/env bash
 
+detect_ssh_port_for_firewall() {
+  local ssh_port
+  ssh_port="$(effective_ssh_port)"
+  if ! is_valid_port "$ssh_port"; then
+    say '检测 SSH 端口失败，已取消防火墙设置。' 'Failed to detect SSH port, firewall setup canceled.'
+    return 1
+  fi
+
+  if is_port_in_use "$ssh_port"; then
+    say "已检测到 SSH 端口: ${ssh_port}" "Detected SSH port: ${ssh_port}"
+  else
+    say "检测到 SSH 端口: ${ssh_port}（当前监听未确认，请谨慎）" "Detected SSH port: ${ssh_port} (listener not confirmed, proceed carefully)"
+  fi
+  FIREWALL_SSH_PORT="$ssh_port"
+}
+
+apply_source_ip_whitelist_firewall() {
+  local source_ip
+  source_ip="$(detect_source_ip)"
+  if [ -z "$source_ip" ]; then
+    say '未检测到来源 IP，跳过来源 IP 白名单保护。' 'Source IP not detected, skipping source whitelist protection.'
+    return
+  fi
+
+  say "来源 IP 白名单保护：$source_ip" "Source IP whitelist protection: $source_ip"
+  if state_get 'FIREWALL_MODE' | grep -q '^ufw$'; then
+    run_cmd "ufw allow from $source_ip to any port $FIREWALL_SSH_PORT proto tcp"
+  else
+    if ! iptables -C INPUT -p tcp -s "$source_ip" --dport "$FIREWALL_SSH_PORT" -j ACCEPT >/dev/null 2>&1; then
+      run_cmd "iptables -I INPUT 1 -p tcp -s $source_ip --dport $FIREWALL_SSH_PORT -j ACCEPT"
+    fi
+  fi
+}
+
+ufw_default_policy() {
+  local defaults
+  defaults="$(ufw status verbose 2>/dev/null | awk -F': ' '/^Default:/{print $2; exit}')"
+  if [ -z "$defaults" ]; then
+    defaults='deny (incoming), allow (outgoing), disabled (routed)'
+  fi
+  printf '%s\n' "$defaults"
+}
+
 ufw_setup() {
   say '风险提示：启用防火墙但未放行 SSH 端口会断开连接。' 'Warning: enabling firewall without SSH port will cut off access.'
   say '风险提示：开放不必要端口会增加被攻击面。' 'Warning: opening unused ports increases exposure.'
@@ -11,11 +54,12 @@ ufw_setup() {
     fi
   fi
 
-  local ssh_rule_port
-  ssh_rule_port="$(effective_ssh_port)"
-  if confirm "放行 SSH 端口 ${ssh_rule_port}？[y/N]" "Allow SSH port ${ssh_rule_port}? [y/N]"; then
-    run_cmd "ufw allow $ssh_rule_port"
-  fi
+  snapshot_create 'before-ufw-setup'
+  detect_ssh_port_for_firewall || return 1
+  say "防火墙将强制放行 SSH 端口 ${FIREWALL_SSH_PORT}" "Firewall will always allow SSH port ${FIREWALL_SSH_PORT}"
+  run_cmd "ufw allow $FIREWALL_SSH_PORT"
+  state_set 'FIREWALL_MODE' 'ufw'
+  apply_source_ip_whitelist_firewall
 
   if confirm '放行 80 端口 (HTTP)？[y/N]' 'Allow port 80 (HTTP)? [y/N]'; then
     run_cmd 'ufw allow 80'
@@ -24,7 +68,10 @@ ufw_setup() {
     run_cmd 'ufw allow 443'
   fi
 
-  if confirm '启用 ufw 防火墙？[y/N]' 'Enable ufw firewall? [y/N]'; then
+  local ufw_defaults
+  ufw_defaults="$(ufw_default_policy)"
+  say "二次确认：即将放行 SSH 端口 ${FIREWALL_SSH_PORT}；即将启用的 UFW 默认策略：${ufw_defaults}" "Final check: SSH port ${FIREWALL_SSH_PORT} will be allowed; UFW default policy to apply: ${ufw_defaults}"
+  if confirm '确认启用 ufw 防火墙？[y/N]' 'Confirm enabling ufw firewall? [y/N]'; then
     run_cmd 'ufw --force enable'
   else
     return 2
@@ -66,22 +113,28 @@ iptables_setup() {
 
   run_cmd 'DEBIAN_FRONTEND=noninteractive apt install -y iptables-persistent'
   run_cmd 'mkdir -p /etc/iptables'
+  snapshot_create 'before-iptables-setup'
   if [ ! -f /etc/iptables/rules.v4.bak ]; then
     run_cmd 'iptables-save > /etc/iptables/rules.v4.bak'
   fi
 
   iptables_ensure_base_rules
 
-  local ssh_port
-  ssh_port="$(effective_ssh_port)"
-  if confirm "放行 SSH 端口 ${ssh_port}？[y/N]" "Allow SSH port ${ssh_port}? [y/N]"; then
-    iptables_allow_port "$ssh_port"
-  fi
+  detect_ssh_port_for_firewall || return 1
+  say "防火墙将强制放行 SSH 端口 ${FIREWALL_SSH_PORT}" "Firewall will always allow SSH port ${FIREWALL_SSH_PORT}"
+  state_set 'FIREWALL_MODE' 'iptables'
+  apply_source_ip_whitelist_firewall
+  iptables_allow_port "$FIREWALL_SSH_PORT"
   if confirm '放行 80 端口 (HTTP)？[y/N]' 'Allow port 80 (HTTP)? [y/N]'; then
     iptables_allow_port '80'
   fi
   if confirm '放行 443 端口 (HTTPS)？[y/N]' 'Allow port 443 (HTTPS)? [y/N]'; then
     iptables_allow_port '443'
+  fi
+
+  say "二次确认：即将放行 SSH 端口 ${FIREWALL_SSH_PORT}；即将启用默认策略 INPUT=DROP, FORWARD=DROP, OUTPUT=ACCEPT" "Final check: SSH port ${FIREWALL_SSH_PORT} will be allowed; default policy to apply: INPUT=DROP, FORWARD=DROP, OUTPUT=ACCEPT"
+  if ! confirm '确认应用上述 iptables 默认策略？[y/N]' 'Confirm applying these iptables default policies? [y/N]'; then
+    return 2
   fi
 
   run_cmd 'iptables -P INPUT DROP'
@@ -94,6 +147,11 @@ iptables_setup() {
 }
 
 firewall_setup() {
+  local current_mode
+  current_mode="$(state_get 'FIREWALL_MODE')"
+  if [ -n "$current_mode" ]; then
+    say "当前记录的防火墙模式：$current_mode" "Current recorded firewall mode: $current_mode"
+  fi
   say '请选择防火墙方案：1) ufw 2) iptables' 'Choose firewall backend: 1) ufw 2) iptables'
   printf '%s ' '> '
   read -r fw_mode

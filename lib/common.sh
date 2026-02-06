@@ -5,6 +5,11 @@ LOG_FILE='/var/log/vps-init.log'
 DISTRO_ID=''
 SSH_PORT=''
 SUMMARY_FILE='/tmp/vps-init-summary.log'
+NON_INTERACTIVE='0'
+NI_AUTO_YES='0'
+STATE_DIR='/etc/linuxvm-init'
+STATE_FILE='/etc/linuxvm-init/state.env'
+SNAPSHOT_DIR='/var/lib/linuxvm-init/snapshots'
 
 say() {
   local zh="$1"
@@ -25,6 +30,12 @@ confirm() {
   else
     prompt="$en"
   fi
+  if [ "$NON_INTERACTIVE" = '1' ]; then
+    if [ "$NI_AUTO_YES" = '1' ]; then
+      return 0
+    fi
+    return 1
+  fi
   printf '%s ' "$prompt"
   read -r ans
   case "$ans" in
@@ -43,12 +54,20 @@ ask() {
   else
     prompt="$en"
   fi
-  printf '%s ' "$prompt"
-  read -r value
+  if [ "$NON_INTERACTIVE" = '1' ]; then
+    local ni_key="NI_${var_name}"
+    value="${!ni_key:-}"
+  else
+    printf '%s ' "$prompt"
+    read -r value
+  fi
   printf -v "$var_name" '%s' "$value"
 }
 
 pause() {
+  if [ "$NON_INTERACTIVE" = '1' ]; then
+    return
+  fi
   say '按回车继续...' 'Press Enter to continue...'
   read -r _
 }
@@ -135,4 +154,74 @@ is_installed() {
 is_valid_port() {
   local port="$1"
   [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]
+}
+
+is_valid_ipv4() {
+  local ip="$1"
+  [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+  local o1 o2 o3 o4
+  IFS='.' read -r o1 o2 o3 o4 <<EOF
+$ip
+EOF
+  for o in "$o1" "$o2" "$o3" "$o4"; do
+    [ "$o" -ge 0 ] && [ "$o" -le 255 ] || return 1
+  done
+  return 0
+}
+
+is_valid_ipv6() {
+  local ip="$1"
+  [[ "$ip" =~ : ]] || return 1
+  command -v python3 >/dev/null 2>&1 || return 1
+  python3 - <<'PY' "$ip"
+import ipaddress, sys
+try:
+    ipaddress.IPv6Address(sys.argv[1])
+except Exception:
+    sys.exit(1)
+sys.exit(0)
+PY
+}
+
+is_valid_ip() {
+  local ip="$1"
+  is_valid_ipv4 "$ip" || is_valid_ipv6 "$ip"
+}
+
+detect_source_ip() {
+  local candidate=''
+  if [ -n "${SSH_CONNECTION:-}" ]; then
+    candidate="$(printf '%s' "$SSH_CONNECTION" | awk '{print $1}')"
+  elif [ -n "${SSH_CLIENT:-}" ]; then
+    candidate="$(printf '%s' "$SSH_CLIENT" | awk '{print $1}')"
+  fi
+  if is_valid_ip "$candidate"; then
+    printf '%s\n' "$candidate"
+  else
+    printf '%s\n' ''
+  fi
+}
+
+ensure_state_dirs() {
+  mkdir -p "$STATE_DIR"
+  mkdir -p "$SNAPSHOT_DIR"
+}
+
+state_set() {
+  local key="$1"
+  local value="$2"
+  ensure_state_dirs
+  touch "$STATE_FILE"
+  if grep -qE "^${key}=" "$STATE_FILE"; then
+    sed -i -E "s|^${key}=.*|${key}=${value}|" "$STATE_FILE"
+  else
+    printf '%s=%s\n' "$key" "$value" >>"$STATE_FILE"
+  fi
+}
+
+state_get() {
+  local key="$1"
+  if [ -f "$STATE_FILE" ]; then
+    awk -F= -v k="$key" '$1==k{print $2; exit}' "$STATE_FILE"
+  fi
 }

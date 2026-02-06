@@ -43,14 +43,31 @@ fail2ban_update_policy() {
     fi
   fi
 
+  local source_ip
+  source_ip="$(detect_source_ip)"
+  if [ -n "$source_ip" ] && ! grep -q "$source_ip" /etc/fail2ban/jail.local; then
+    sed -i -E "s|^[[:space:]]*ignoreip[[:space:]]*=.*|& ${source_ip}|" /etc/fail2ban/jail.local
+  fi
+
+  snapshot_create 'before-fail2ban-policy-change'
   run_cmd 'systemctl restart fail2ban'
   run_cmd 'fail2ban-client status sshd'
 }
 
 fail2ban_ban_ip() {
+  local source_ip
+  source_ip="$(detect_source_ip)"
   ask '输入要封禁的 IP：' 'Enter IP to ban:' target_ip
   if [ -z "$target_ip" ]; then
     say 'IP 不能为空。' 'IP cannot be empty.'
+    return 1
+  fi
+  if ! is_valid_ip "$target_ip"; then
+    say 'IP 格式无效，请输入合法 IPv4/IPv6。' 'Invalid IP format, please use valid IPv4/IPv6.'
+    return 1
+  fi
+  if [ -n "$source_ip" ] && [ "$target_ip" = "$source_ip" ]; then
+    say '禁止封禁当前来源 IP，已拦截此操作。' 'Refusing to ban current source IP.'
     return 1
   fi
   run_cmd "fail2ban-client set sshd banip $target_ip"
@@ -60,6 +77,10 @@ fail2ban_unban_ip() {
   ask '输入要解封的 IP：' 'Enter IP to unban:' target_ip
   if [ -z "$target_ip" ]; then
     say 'IP 不能为空。' 'IP cannot be empty.'
+    return 1
+  fi
+  if ! is_valid_ip "$target_ip"; then
+    say 'IP 格式无效，请输入合法 IPv4/IPv6。' 'Invalid IP format, please use valid IPv4/IPv6.'
     return 1
   fi
   run_cmd "fail2ban-client set sshd unbanip $target_ip"

@@ -124,15 +124,24 @@ iptables_manage_menu() {
 }
 
 firewall_manage() {
+  local current_mode
+  current_mode="$(state_get 'FIREWALL_MODE')"
+  if [ -n "$current_mode" ]; then
+    say "当前记录模式：$current_mode" "Current recorded mode: $current_mode"
+  fi
   say '选择要管理的防火墙：1) ufw 2) iptables' 'Choose firewall to manage: 1) ufw 2) iptables'
   printf '%s ' '> '
   read -r mode
+  if [ -z "$mode" ] && [ -n "$current_mode" ]; then
+    mode="$([ "$current_mode" = 'iptables' ] && printf '2' || printf '1')"
+  fi
   case "$mode" in
     1)
       if ! is_installed ufw; then
         say '未检测到 ufw。' 'ufw is not installed.'
         return 1
       fi
+      state_set 'FIREWALL_MODE' 'ufw'
       ufw_manage_menu
       ;;
     2)
@@ -140,6 +149,7 @@ firewall_manage() {
         say '未检测到 iptables。' 'iptables is not installed.'
         return 1
       fi
+      state_set 'FIREWALL_MODE' 'iptables'
       iptables_manage_menu
       ;;
     *)

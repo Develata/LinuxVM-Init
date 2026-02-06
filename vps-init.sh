@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -u
-
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 source "$BASE_DIR/lib/common.sh"
@@ -10,6 +9,8 @@ source "$BASE_DIR/modules/users.sh"
 source "$BASE_DIR/modules/ssh_common.sh"
 source "$BASE_DIR/modules/ssh_port.sh"
 source "$BASE_DIR/modules/ssh_auth.sh"
+source "$BASE_DIR/modules/ssh_manage.sh"
+source "$BASE_DIR/modules/snapshot.sh"
 source "$BASE_DIR/modules/ufw.sh"
 source "$BASE_DIR/modules/firewall_manage.sh"
 source "$BASE_DIR/modules/swap.sh"
@@ -20,6 +21,50 @@ source "$BASE_DIR/modules/fail2ban_manage.sh"
 source "$BASE_DIR/modules/unattended.sh"
 source "$BASE_DIR/modules/1panel.sh"
 source "$BASE_DIR/modules/manage_center.sh"
+source "$BASE_DIR/modules/monitor.sh"
+parse_args() {
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --non-interactive) NON_INTERACTIVE='1' ;;
+      --yes) NI_AUTO_YES='1' ;;
+      --lang)
+        shift
+        [ "${1:-}" = 'en' ] && LANG_CHOICE='en' || LANG_CHOICE='zh'
+        ;;
+      --distro)
+        shift
+        DISTRO_ID="${1:-}"
+        ;;
+    esac
+    shift
+  done
+}
+validate_distro_id() {
+  case "$DISTRO_ID" in
+    debian10|debian11|debian12|debian13|ubuntu22|ubuntu24) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+run_non_interactive_profile() {
+  if [ -z "${NI_AUTO_YES:-}" ] || [ "${NI_AUTO_YES}" = '0' ]; then
+    NI_AUTO_YES='1'
+  fi
+  if ! validate_distro_id; then
+    say '非交互模式必须通过 --distro 指定受支持系统。' 'Non-interactive mode requires --distro with supported value.'
+    return 1
+  fi
+  NI_RUN_SYSTEM_UPDATE="${NI_RUN_SYSTEM_UPDATE:-1}"
+  NI_RUN_TOOLS="${NI_RUN_TOOLS:-1}"
+  NI_RUN_FIREWALL="${NI_RUN_FIREWALL:-0}"
+  NI_RUN_FAIL2BAN="${NI_RUN_FAIL2BAN:-0}"
+  NI_RUN_UNATTENDED="${NI_RUN_UNATTENDED:-1}"
+
+  [ "$NI_RUN_SYSTEM_UPDATE" = '1' ] && run_step 'system_update' system_update
+  [ "$NI_RUN_TOOLS" = '1' ] && run_step 'tools_install' tools_install
+  [ "$NI_RUN_FIREWALL" = '1' ] && run_step 'firewall_setup' firewall_setup
+  [ "$NI_RUN_FAIL2BAN" = '1' ] && run_step 'fail2ban_setup' fail2ban_setup
+  [ "$NI_RUN_UNATTENDED" = '1' ] && run_step 'unattended_enable' unattended_enable
+}
 
 select_language() {
   printf '%s\n' 'Select language / 选择语言'
@@ -99,17 +144,23 @@ recommended_flow() {
   run_step 'system_update' system_update
   run_step 'tools_install' tools_install
   run_step 'user_add' user_add
-  choose_ssh_port
-  local p_rc=$?
-  if [ "$p_rc" -eq 0 ]; then
-    record_step 'choose_ssh_port' 'success'
-  elif [ "$p_rc" -eq 2 ]; then
-    record_step 'choose_ssh_port' 'skipped'
+  if confirm '是否执行 SSH 安全设置（默认跳过）？[y/N]' 'Apply SSH hardening (default skip)? [y/N]'; then
+    choose_ssh_port
+    local p_rc=$?
+    if [ "$p_rc" -eq 0 ]; then
+      record_step 'choose_ssh_port' 'success'
+    elif [ "$p_rc" -eq 2 ]; then
+      record_step 'choose_ssh_port' 'skipped'
+    else
+      record_step 'choose_ssh_port' 'failed'
+    fi
+    run_step 'firewall_setup' firewall_setup
+    run_step 'ssh_configure' ssh_configure
   else
-    record_step 'choose_ssh_port' 'failed'
+    record_step 'choose_ssh_port' 'skipped'
+    run_step 'firewall_setup' firewall_setup
+    record_step 'ssh_configure' 'skipped'
   fi
-  run_step 'firewall_setup' firewall_setup
-  run_step 'ssh_configure' ssh_configure
   run_step 'unattended_enable' unattended_enable
 }
 
@@ -173,13 +224,26 @@ main_menu() {
   done
 }
 
-select_language
+parse_args "$@"
+if [ "$NON_INTERACTIVE" != '1' ]; then
+  select_language
+fi
 ensure_log
 init_summary
 require_root
 say '请保持当前 SSH 会话，不要中断。' 'Keep your current SSH session open.'
-select_distro
+if [ -z "$DISTRO_ID" ]; then
+  if [ "$NON_INTERACTIVE" = '1' ]; then
+    say '非交互模式下必须指定 --distro。' 'You must provide --distro in non-interactive mode.'
+    exit 1
+  fi
+  select_distro
+fi
 check_distro_consistency
-main_menu
+if [ "$NON_INTERACTIVE" = '1' ]; then
+  run_non_interactive_profile
+else
+  main_menu
+fi
 print_summary
 print_rollback_hints

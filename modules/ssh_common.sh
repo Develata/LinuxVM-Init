@@ -15,6 +15,12 @@ restart_ssh() {
   systemctl restart sshd 2>/dev/null || systemctl restart ssh
 }
 
+get_sshd_option() {
+  local key="$1"
+  local file='/etc/ssh/sshd_config'
+  awk -v k="$key" 'BEGIN{IGNORECASE=0} $1==k {print $2; found=1} END{if(!found) print ""}' "$file" 2>/dev/null
+}
+
 validate_sshd_config() {
   local sshd_bin
   sshd_bin="$(command -v sshd 2>/dev/null || true)"
@@ -28,6 +34,22 @@ rollback_sshd_config() {
   if [ -f /etc/ssh/sshd_config.bak ]; then
     cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config
   fi
+}
+
+apply_sshd_changes() {
+  if ! validate_sshd_config; then
+    say 'SSH 配置语法校验失败，已回滚到备份。' 'SSH config validation failed, rolled back to backup.'
+    rollback_sshd_config
+    return 1
+  fi
+
+  if ! restart_ssh; then
+    say 'SSH 服务重启失败，已回滚到备份并尝试恢复服务。' 'SSH restart failed, rolled back and trying to recover service.'
+    rollback_sshd_config
+    restart_ssh || true
+    return 1
+  fi
+  return 0
 }
 
 print_ssh_test_hint() {
