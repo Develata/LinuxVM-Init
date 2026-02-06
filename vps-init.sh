@@ -21,9 +21,9 @@ source "$BASE_DIR/modules/fail2ban.sh"
 source "$BASE_DIR/modules/fail2ban_manage.sh"
 source "$BASE_DIR/modules/unattended.sh"
 source "$BASE_DIR/modules/1panel.sh"
-source "$BASE_DIR/modules/manage_center.sh"
 source "$BASE_DIR/modules/monitor.sh"
 source "$BASE_DIR/modules/safe_mode.sh"
+source "$BASE_DIR/modules/update.sh"
 source "$BASE_DIR/modules/panel_main.sh"
 
 run_step() {

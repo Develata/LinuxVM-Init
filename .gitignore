@@ -17,6 +17,9 @@ quick_start.sh
 # Local logs in repo root (if manually generated)
 *.log
 
+# Local update backups
+.local-backups/
+
 # Optional env files
 .env
 .env.*

@@ -64,16 +64,16 @@ if source "$BASE_DIR/lib/common.sh" \
   && source "$BASE_DIR/modules/fail2ban_manage.sh" \
   && source "$BASE_DIR/modules/unattended.sh" \
   && source "$BASE_DIR/modules/1panel.sh" \
-  && source "$BASE_DIR/modules/manage_center.sh" \
   && source "$BASE_DIR/modules/monitor.sh" \
   && source "$BASE_DIR/modules/safe_mode.sh" \
+  && source "$BASE_DIR/modules/update.sh" \
   && source "$BASE_DIR/modules/panel_main.sh"; then
   ok 'all modules source successfully'
 else
   fail 'failed to source one or more modules'
 fi
 
-required_functions='main_menu manage_center novice_safe_repair firewall_setup fail2ban_setup snapshot_create monitor_manage'
+required_functions='main_menu init_flow ssh_manage docker_manage firewall_manage fail2ban_manage novice_safe_repair snapshot_create monitor_manage script_update'
 for fn in $required_functions; do
   if declare -F "$fn" >/dev/null 2>&1; then
     ok "function available: $fn"
