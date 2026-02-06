@@ -148,16 +148,27 @@ iptables_setup() {
 
 firewall_setup() {
   local current_mode
+  local fw_mode
   current_mode="$(state_get 'FIREWALL_MODE')"
   if [ -n "$current_mode" ]; then
     say "当前记录的防火墙模式：$current_mode" "Current recorded firewall mode: $current_mode"
   fi
   say '请选择防火墙方案：1) ufw 2) iptables' 'Choose firewall backend: 1) ufw 2) iptables'
-  printf '%s ' '> '
-  read -r fw_mode
+  if [ "$NON_INTERACTIVE" = '1' ]; then
+    fw_mode="${NI_FIREWALL_MODE:-}"
+    if [ -z "$fw_mode" ] && [ -n "$current_mode" ]; then
+      fw_mode="$([ "$current_mode" = 'iptables' ] && printf '2' || printf '1')"
+    fi
+    if [ -z "$fw_mode" ]; then
+      fw_mode='1'
+    fi
+  else
+    printf '%s ' '> '
+    read -r fw_mode
+  fi
   case "$fw_mode" in
-    1|'') ufw_setup ;;
-    2) iptables_setup ;;
+    1|ufw|'') ufw_setup ;;
+    2|iptables) iptables_setup ;;
     *)
       say '输入无效，请输入 1 或 2。' 'Invalid input, please enter 1 or 2.'
       return 1
