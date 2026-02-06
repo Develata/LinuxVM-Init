@@ -28,6 +28,7 @@
 2. 在服务器上拉取项目：
 
 ```bash
+apt install git # 防止没有git
 git clone https://github.com/Develata/LinuxVM-Init.git
 cd LinuxVM-Init
 ```
