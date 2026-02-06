@@ -16,8 +16,8 @@
 - 防火墙：支持 `ufw` 与 `iptables`，启用前强制检测并放行 SSH 端口。
 - Fail2ban：可安装并配置防爆破策略，支持手动封禁/解封 IP。
 - 运行环境：可选安装 Docker、配置 Docker 日志限制、配置 Swap、启用自动安全更新。
- - Docker 安装流程会同时检测并安装 Docker Compose（优先 compose 插件）。
-- 常驻运维：提供管理中心（SSH/防火墙/fail2ban/Docker/Swap/自动更新）可长期反复使用。
+- Docker 安装流程会同时检测并安装 Docker Compose（优先 compose 插件）。
+- 面板运维：主菜单分模块管理（SSH/防火墙/fail2ban/Docker/Swap/系统维护），可长期反复使用。
 - 安全兜底：关键变更前会创建快照，支持按快照 ID 回滚；并记录执行日志与结果汇总。
 
 ## 使用方式
@@ -67,7 +67,7 @@ sudo bash vps-init.sh --non-interactive --distro ubuntu24
 - 防火墙模式会持久化记录在 `/etc/linuxvm-init/state.env`。
 - 防火墙与 fail2ban 变更时会优先保护当前来源 IP（可检测时）。
 - 当检测到主机内存小于 1G 时，默认跳过 Docker 安装。
-- 若内存小于 1G，仍可在常驻管理中心进入 Docker 管理后手动确认“强制安装”。
+- 若内存小于 1G，仍可在主菜单 `2) Docker 管理面板` 中手动确认“强制安装”。
 - Swap 会先做磁盘判断：当 `磁盘 < 内存 * 4` 时自动跳过。
 
 ## 常驻管理能力
@@ -86,7 +86,12 @@ sudo bash vps-init.sh --non-interactive --distro ubuntu24
 
 ## 项目结构
 - `vps-init.sh`：主入口脚本（菜单与流程）
-- `lib/common.sh`：公共方法（多语言、日志、交互、备份）
+- `lib/common.sh`：公共入口（聚合通用方法）
+- `lib/common_ui.sh`：交互与提示
+- `lib/common_exec.sh`：命令执行、校验、来源 IP 检测
+- `lib/common_state.sh`：状态持久化、执行汇总、回滚提示
+- `modules/panel_args.sh`：参数解析、系统选择、非交互入口
+- `modules/panel_menu.sh`：主菜单与 Init 流程
 - `modules/ssh_common.sh`：SSH 公共能力（端口检测、配置写入）
 - `modules/ssh_port.sh`：SSH 端口与 root 登录策略
 - `modules/ssh_auth.sh`：SSH 密钥登录策略
