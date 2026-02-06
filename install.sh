@@ -4,6 +4,7 @@ set -u
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_CMD='/usr/local/bin/lvm'
 SOURCE_SCRIPT="$BASE_DIR/vps-init.sh"
+MARKER='# LinuxVM-Init managed wrapper'
 
 if [ "$(id -u)" -ne 0 ]; then
   printf '%s\n' 'Please run as root: sudo bash install.sh'
@@ -15,22 +16,29 @@ if [ ! -f "$SOURCE_SCRIPT" ]; then
   exit 1
 fi
 
-if [ -e "$TARGET_CMD" ] && [ ! -L "$TARGET_CMD" ]; then
-  printf '%s\n' "Existing non-symlink command detected: $TARGET_CMD"
-  printf '%s\n' 'Refusing to overwrite it. Please move/remove it manually first.'
-  exit 1
-fi
-
 if [ -L "$TARGET_CMD" ]; then
   existing_target="$(readlink -f "$TARGET_CMD" 2>/dev/null || true)"
   if [ -n "$existing_target" ] && [ "$existing_target" != "$SOURCE_SCRIPT" ]; then
     printf '%s\n' "Existing lvm symlink points to: $existing_target"
     printf '%s\n' 'It will be replaced with current repo path.'
   fi
+  rm -f "$TARGET_CMD"
+elif [ -f "$TARGET_CMD" ]; then
+  if ! grep -qF "$MARKER" "$TARGET_CMD" 2>/dev/null; then
+    printf '%s\n' "Existing lvm command is not managed by LinuxVM-Init: $TARGET_CMD"
+    printf '%s\n' 'Refusing to overwrite it. Please move/remove it manually first.'
+    exit 1
+  fi
 fi
 
 chmod +x "$SOURCE_SCRIPT" "$BASE_DIR/selfcheck.sh"
-ln -sf "$SOURCE_SCRIPT" "$TARGET_CMD"
+
+cat > "$TARGET_CMD" <<EOF
+#!/usr/bin/env bash
+$MARKER
+exec bash "$SOURCE_SCRIPT" "\$@"
+EOF
+chmod +x "$TARGET_CMD"
 
 printf '%s\n' "Installed command: lvm -> $SOURCE_SCRIPT"
 printf '%s\n' 'Try: lvm'

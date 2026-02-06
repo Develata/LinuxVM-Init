@@ -15,25 +15,49 @@ init_flow() {
   say 'Init 一键顺序配置将按安全顺序执行基础步骤。' 'Init one-click flow runs baseline steps in safe order.'
   say '风险提示：请保持当前 SSH 会话，不要中断。' 'Warning: keep your current SSH session open.'
   confirm '继续执行？[y/N]' 'Proceed? [y/N]' || return 2
+
+  say '步骤1/7：系统更新。说明：会更新软件包索引并安装可升级项，可能耗时。' 'Step 1/7: system update. Note: updates package index and installs available upgrades.'
   run_step 'system_update' system_update
+
+  say '步骤2/7：常用工具。说明：vim 和 command-not-found 默认跳过，直接回车即可。' 'Step 2/7: tools. Note: vim and command-not-found are skipped by default, press Enter to skip.'
   run_step 'tools_install' tools_install
+
+  say '步骤3/7：创建普通用户。说明：先输入用户名，再设置密码，资料项可连续回车，最后输入 Y 确认。' 'Step 3/7: create user. Note: enter username, set password, press Enter for profile fields, then type Y.'
   run_step 'user_add' user_add
+
+  say '步骤4/7：SSH 与防火墙。说明：若启用 SSH 设置，只需选一次端口，然后配置防火墙并应用 SSH。' 'Step 4/7: SSH and firewall. Note: if enabled, choose SSH port once, then configure firewall and apply SSH.'
   if confirm '是否执行 SSH 安全设置（默认跳过）？[y/N]' 'Apply SSH hardening (default skip)? [y/N]'; then
     choose_ssh_port
     case "$?" in
-      0) record_step 'choose_ssh_port' 'success' ;;
-      2) record_step 'choose_ssh_port' 'skipped' ;;
-      *) record_step 'choose_ssh_port' 'failed' ;;
+      0)
+        record_step 'choose_ssh_port' 'success'
+        run_step 'firewall_setup' firewall_setup
+        run_step 'ssh_apply_selected_port' ssh_apply_selected_port
+        ;;
+      2)
+        record_step 'choose_ssh_port' 'skipped'
+        record_step 'firewall_setup' 'skipped'
+        record_step 'ssh_apply_selected_port' 'skipped'
+        ;;
+      *)
+        record_step 'choose_ssh_port' 'failed'
+        record_step 'firewall_setup' 'skipped'
+        record_step 'ssh_apply_selected_port' 'skipped'
+        ;;
     esac
-    run_step 'firewall_setup' firewall_setup
-    run_step 'ssh_configure' ssh_configure
   else
     record_step 'choose_ssh_port' 'skipped'
     run_step 'firewall_setup' firewall_setup
-    record_step 'ssh_configure' 'skipped'
+    record_step 'ssh_apply_selected_port' 'skipped'
   fi
+
+  say '步骤5/7：fail2ban。说明：默认参数已较保守，失败登录过多会自动封禁。' 'Step 5/7: fail2ban. Note: defaults are conservative and block repeated failed logins.'
   run_step 'fail2ban_setup' fail2ban_setup
+
+  say '步骤6/7：自动安全更新。说明：启用后系统会自动执行安全更新。' 'Step 6/7: unattended upgrades. Note: enables automatic security updates.'
   run_step 'unattended_enable' unattended_enable
+
+  say '步骤7/7：Swap（可选）。说明：不需要可直接回车跳过。' 'Step 7/7: swap (optional). Note: press Enter to skip if not needed.'
   if confirm '是否执行 Swap 配置？[y/N]' 'Configure swap now? [y/N]'; then
     run_step 'swap_setup' swap_setup
   else

@@ -58,6 +58,15 @@ ssh_configure() {
     choose_ssh_port || return $?
   fi
 
+  ssh_apply_selected_port
+}
+
+ssh_apply_selected_port() {
+  if [ -z "$SSH_PORT" ]; then
+    say '未检测到预设 SSH 端口，请先选择端口。' 'No preset SSH port found. Please choose a port first.'
+    return 1
+  fi
+
   say '风险提示：禁用 root 登录后，root 将无法 SSH 登录。' 'Warning: disabling root login blocks SSH root access.'
   local disable_root='no'
   if confirm '是否禁用 root 登录？输入 y 继续。' 'Disable root login? Enter y to proceed.'; then

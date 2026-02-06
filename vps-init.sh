@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -u
 
-BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASE_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
 source "$BASE_DIR/lib/common.sh"
 source "$BASE_DIR/modules/system.sh"
