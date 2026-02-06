@@ -129,13 +129,16 @@ firewall_manage() {
   if [ -n "$current_mode" ]; then
     say "当前记录模式：$current_mode" "Current recorded mode: $current_mode"
   fi
-  say '选择要管理的防火墙：1) ufw 2) iptables' 'Choose firewall to manage: 1) ufw 2) iptables'
+  say '0) 首次安装/初始化防火墙  1) 管理 ufw  2) 管理 iptables' '0) Initial firewall setup  1) Manage ufw  2) Manage iptables'
   printf '%s ' '> '
   read -r mode
   if [ -z "$mode" ] && [ -n "$current_mode" ]; then
     mode="$([ "$current_mode" = 'iptables' ] && printf '2' || printf '1')"
   fi
   case "$mode" in
+    0)
+      firewall_setup
+      ;;
     1)
       if ! is_installed ufw; then
         say '未检测到 ufw。' 'ufw is not installed.'

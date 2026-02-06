@@ -87,14 +87,10 @@ fail2ban_unban_ip() {
 }
 
 fail2ban_manage() {
-  if ! is_installed fail2ban-client; then
-    say '未安装 fail2ban，请先执行 fail2ban 配置。' 'fail2ban is not installed, run setup first.'
-    return 1
-  fi
-
   while true; do
     say '==== fail2ban 管理 ====' '==== fail2ban Management ===='
     if [ "$LANG_CHOICE" = 'zh' ]; then
+      printf '%s\n' '0) 安装/初始化 fail2ban'
       printf '%s\n' '1) 查看 sshd 状态'
       printf '%s\n' '2) 修改封禁策略'
       printf '%s\n' '3) 手动封禁 IP'
@@ -102,6 +98,7 @@ fail2ban_manage() {
       printf '%s\n' '5) 查看 fail2ban 运行状态'
       printf '%s\n' 'b) 返回'
     else
+      printf '%s\n' '0) Install/init fail2ban'
       printf '%s\n' '1) Show sshd jail status'
       printf '%s\n' '2) Update ban policy'
       printf '%s\n' '3) Ban IP manually'
@@ -112,11 +109,42 @@ fail2ban_manage() {
     printf '%s ' '> '
     read -r op
     case "$op" in
-      1) run_cmd 'fail2ban-client status sshd' ;;
-      2) fail2ban_update_policy ;;
-      3) fail2ban_ban_ip ;;
-      4) fail2ban_unban_ip ;;
-      5) run_cmd 'systemctl status fail2ban --no-pager -l' ;;
+      0) fail2ban_setup ;;
+      1)
+        if ! is_installed fail2ban-client; then
+          say '未安装 fail2ban，请先执行 0) 安装/初始化。' 'fail2ban not installed. Run 0) install/init first.'
+        else
+          run_cmd 'fail2ban-client status sshd'
+        fi
+        ;;
+      2)
+        if ! is_installed fail2ban-client; then
+          say '未安装 fail2ban，请先执行 0) 安装/初始化。' 'fail2ban not installed. Run 0) install/init first.'
+        else
+          fail2ban_update_policy
+        fi
+        ;;
+      3)
+        if ! is_installed fail2ban-client; then
+          say '未安装 fail2ban，请先执行 0) 安装/初始化。' 'fail2ban not installed. Run 0) install/init first.'
+        else
+          fail2ban_ban_ip
+        fi
+        ;;
+      4)
+        if ! is_installed fail2ban-client; then
+          say '未安装 fail2ban，请先执行 0) 安装/初始化。' 'fail2ban not installed. Run 0) install/init first.'
+        else
+          fail2ban_unban_ip
+        fi
+        ;;
+      5)
+        if ! is_installed fail2ban-client; then
+          say '未安装 fail2ban，请先执行 0) 安装/初始化。' 'fail2ban not installed. Run 0) install/init first.'
+        else
+          run_cmd 'systemctl status fail2ban --no-pager -l'
+        fi
+        ;;
       b|B) return 0 ;;
       *) say '输入无效。' 'Invalid input.' ;;
     esac

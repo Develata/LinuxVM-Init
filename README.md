@@ -94,8 +94,8 @@ sudo bash vps-init.sh --non-interactive --distro ubuntu24
 - 主菜单 `1) SSH 管理面板`：SSH 相关操作全部集中管理。
 - 主菜单 `2) Docker 管理面板`：Docker 安装、Compose、代理、日志限制统一管理。
 - 主菜单 `3) 防火墙管理面板`：`ufw` 与 `iptables` 的规则和策略管理。
-- 主菜单 `4) fail2ban 管理面板`：策略调整、封禁与解封 IP。
-- 主菜单 `5) 系统维护`：系统更新、工具、用户、自动更新、logrotate、1panel。
+- 主菜单 `4) fail2ban 管理面板`：支持安装/初始化、策略调整、封禁与解封 IP。
+- 主菜单 `5) 系统维护`：系统更新、工具、用户、自动更新管理、logrotate、1panel。
 - 主菜单 `6) Swap 管理`：查看/重配/删除 swap。
 - 主菜单 `7) 快照与回滚`：按时间戳创建、查看、回滚配置。
 - 主菜单 `8) 巡检与每日简报`：cron 每日报告与手动巡检。

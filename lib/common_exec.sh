@@ -12,7 +12,7 @@ log_line() {
 
 run_cmd() {
   local cmd="$1"
-  printf '>> %s\n' "$cmd"
+  printf '%b>> %s%b\n' "${C_BOLD}${C_BLUE}" "$cmd" "$C_RESET"
   log_line ">> $cmd"
   bash -c "$cmd" 2>&1 | tee -a "$LOG_FILE"
   return "${PIPESTATUS[0]}"

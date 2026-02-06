@@ -107,7 +107,7 @@ system_menu() {
       printf '%s\n' '1) 系统更新'
       printf '%s\n' '2) 常用工具安装'
       printf '%s\n' '3) 添加普通用户 + sudo'
-      printf '%s\n' '4) 安全更新 (unattended-upgrades)'
+      printf '%s\n' '4) 安全更新管理 (unattended-upgrades)'
       printf '%s\n' '5) logrotate 配置'
       printf '%s\n' '6) 1panel 安装'
       printf '%s\n' 'b) 返回'
@@ -115,7 +115,7 @@ system_menu() {
       printf '%s\n' '1) System update'
       printf '%s\n' '2) Install tools'
       printf '%s\n' '3) Add user + sudo'
-      printf '%s\n' '4) Enable unattended-upgrades'
+      printf '%s\n' '4) Unattended-upgrades management'
       printf '%s\n' '5) logrotate setup'
       printf '%s\n' '6) Install 1panel'
       printf '%s\n' 'b) Back'
@@ -126,7 +126,7 @@ system_menu() {
       1) run_step 'system_update' system_update ;;
       2) run_step 'tools_install' tools_install ;;
       3) run_step 'user_add' user_add ;;
-      4) run_step 'unattended_enable' unattended_enable ;;
+      4) run_step 'unattended_manage' unattended_manage ;;
       5) run_step 'logrotate_setup' logrotate_setup ;;
       6) run_step 'onepanel_install' onepanel_install ;;
       b|B) return 0 ;;
