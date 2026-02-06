@@ -36,6 +36,11 @@ chmod +x "$SOURCE_SCRIPT" "$BASE_DIR/selfcheck.sh"
 cat > "$TARGET_CMD" <<EOF
 #!/usr/bin/env bash
 $MARKER
+if [ "\${LVM_WRAPPER_SEEN:-0}" = '1' ]; then
+  printf '%s\n' 'Detected wrapper recursion. Please restore ~/LinuxVM-Init/vps-init.sh from git.'
+  exit 1
+fi
+export LVM_WRAPPER_SEEN='1'
 exec bash "$SOURCE_SCRIPT" "\$@"
 EOF
 chmod +x "$TARGET_CMD"

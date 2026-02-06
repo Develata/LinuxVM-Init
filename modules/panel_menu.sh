@@ -116,6 +116,7 @@ main_menu() {
       printf '%s\n' '7) 快照与回滚'
       printf '%s\n' '8) 巡检与每日简报'
       printf '%s\n' '9) 脚本更新'
+      printf '%s\n' '10) 清空已记住的语言/系统'
       printf '%s\n' '99) 新手一键修复（应急）'
       printf '%s\n' 'q) 退出'
     else
@@ -129,6 +130,7 @@ main_menu() {
       printf '%s\n' '7) Snapshot and restore'
       printf '%s\n' '8) Inspection and daily report'
       printf '%s\n' '9) Script update'
+      printf '%s\n' '10) Reset saved language/distro'
       printf '%s\n' '99) Novice one-click safe repair (emergency)'
       printf '%s\n' 'q) Quit'
     fi
@@ -145,6 +147,7 @@ main_menu() {
       7) run_step 'snapshot_manage' snapshot_manage ;;
       8) run_step 'monitor_manage' monitor_manage ;;
       9) run_step 'script_update' script_update ;;
+      10) run_step 'reset_saved_preferences' reset_saved_preferences ;;
       99) run_step 'novice_safe_repair' novice_safe_repair ;;
       q|Q) break ;;
       *) say '选择无效。' 'Invalid choice.' ;;

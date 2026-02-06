@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
 parse_args() {
+  PARSE_LANG_SET='0'
+  PARSE_DISTRO_SET='0'
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --non-interactive) NON_INTERACTIVE='1' ;;
@@ -8,14 +10,64 @@ parse_args() {
       --lang)
         shift
         [ "${1:-}" = 'en' ] && LANG_CHOICE='en' || LANG_CHOICE='zh'
+        PARSE_LANG_SET='1'
         ;;
       --distro)
         shift
         DISTRO_ID="${1:-}"
+        PARSE_DISTRO_SET='1'
         ;;
     esac
     shift
   done
+}
+
+load_saved_preferences() {
+  PREF_LANG_LOADED='0'
+  PREF_DISTRO_LOADED='0'
+
+  if [ "${PARSE_LANG_SET:-0}" != '1' ]; then
+    local saved_lang
+    saved_lang="$(state_get 'PREF_LANG')"
+    case "$saved_lang" in
+      zh|en)
+        LANG_CHOICE="$saved_lang"
+        PREF_LANG_LOADED='1'
+        ;;
+    esac
+  fi
+
+  if [ "${PARSE_DISTRO_SET:-0}" != '1' ]; then
+    local saved_distro
+    saved_distro="$(state_get 'PREF_DISTRO')"
+    case "$saved_distro" in
+      debian10|debian11|debian12|debian13|ubuntu22|ubuntu24)
+        DISTRO_ID="$saved_distro"
+        PREF_DISTRO_LOADED='1'
+        ;;
+    esac
+  fi
+}
+
+persist_preferences() {
+  case "$LANG_CHOICE" in
+    zh|en) state_set 'PREF_LANG' "$LANG_CHOICE" ;;
+  esac
+  case "$DISTRO_ID" in
+    debian10|debian11|debian12|debian13|ubuntu22|ubuntu24) state_set 'PREF_DISTRO' "$DISTRO_ID" ;;
+  esac
+}
+
+reset_saved_preferences() {
+  say '将清空已记住的语言和系统，下次启动会重新询问。' 'This clears saved language and distro. You will be asked again next launch.'
+  if ! confirm '确认清空？[y/N]' 'Confirm reset? [y/N]'; then
+    return 2
+  fi
+
+  if [ -f "$STATE_FILE" ]; then
+    sed -i -E '/^PREF_LANG=/d;/^PREF_DISTRO=/d' "$STATE_FILE"
+  fi
+  say '已清空已记住的语言/系统。' 'Saved language/distro has been cleared.'
 }
 
 validate_distro_id() {

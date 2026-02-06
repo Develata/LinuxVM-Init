@@ -3,6 +3,12 @@ set -u
 
 BASE_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
+if [ ! -d "$BASE_DIR/lib" ] || [ ! -d "$BASE_DIR/modules" ]; then
+  printf '%s\n' "Invalid base path: $BASE_DIR"
+  printf '%s\n' 'Please run from a valid LinuxVM-Init directory.'
+  exit 1
+fi
+
 source "$BASE_DIR/lib/common.sh"
 source "$BASE_DIR/modules/system.sh"
 source "$BASE_DIR/modules/tools.sh"
@@ -42,26 +48,35 @@ run_step() {
 }
 
 parse_args "$@"
-if [ "$NON_INTERACTIVE" != '1' ]; then
-  select_language
-fi
-
 ensure_log
 init_summary
 require_root
 ensure_state_dirs
+load_saved_preferences
+
+if [ "$NON_INTERACTIVE" != '1' ]; then
+  if [ "${PREF_LANG_LOADED:-0}" = '1' ]; then
+    say "已使用上次语言设置：$LANG_CHOICE" "Using saved language: $LANG_CHOICE"
+  else
+    select_language
+  fi
+fi
+
 ensure_global_lvm_command || true
 say '请保持当前 SSH 会话，不要中断。' 'Keep your current SSH session open.'
 
 if [ -z "$DISTRO_ID" ]; then
   if [ "$NON_INTERACTIVE" = '1' ]; then
-    say '非交互模式下必须指定 --distro。' 'You must provide --distro in non-interactive mode.'
+    say '非交互模式下必须指定 --distro（或先交互运行一次保存系统选择）。' 'You must provide --distro in non-interactive mode (or run once interactively to save preference).'
     exit 1
   fi
   select_distro
+elif [ "$NON_INTERACTIVE" != '1' ] && [ "${PREF_DISTRO_LOADED:-0}" = '1' ]; then
+  say "已使用上次系统设置：$DISTRO_ID" "Using saved distro: $DISTRO_ID"
 fi
 
 check_distro_consistency
+persist_preferences
 if [ "$NON_INTERACTIVE" = '1' ]; then
   run_non_interactive_profile
 else
