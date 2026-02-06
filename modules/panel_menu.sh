@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+show_main_dashboard() {
+  local fw_mode last_snapshot ssh_port f2b_state
+  fw_mode="$(state_get 'FIREWALL_MODE')"
+  last_snapshot="$(state_get 'LAST_SNAPSHOT')"
+  ssh_port="$(current_ssh_port)"
+  f2b_state="$(systemctl is-active fail2ban 2>/dev/null || printf 'unknown')"
+  [ -z "$fw_mode" ] && fw_mode='unknown'
+  [ -z "$last_snapshot" ] && last_snapshot='none'
+  say '维护者: Develata | 仓库: https://github.com/Develata/LinuxVM-Init' 'Maintainer: Develata | Repo: https://github.com/Develata/LinuxVM-Init'
+  say "状态: 系统=$DISTRO_ID SSH=$ssh_port 防火墙=$fw_mode fail2ban=$f2b_state 快照=$last_snapshot" "Status: distro=$DISTRO_ID SSH=$ssh_port firewall=$fw_mode fail2ban=$f2b_state snapshot=$last_snapshot"
+}
+
+init_flow() {
+  say 'Init 一键顺序配置将按安全顺序执行基础步骤。' 'Init one-click flow runs baseline steps in safe order.'
+  say '风险提示：请保持当前 SSH 会话，不要中断。' 'Warning: keep your current SSH session open.'
+  confirm '继续执行？[y/N]' 'Proceed? [y/N]' || return 2
+  run_step 'system_update' system_update
+  run_step 'tools_install' tools_install
+  run_step 'user_add' user_add
+  if confirm '是否执行 SSH 安全设置（默认跳过）？[y/N]' 'Apply SSH hardening (default skip)? [y/N]'; then
+    choose_ssh_port
+    case "$?" in
+      0) record_step 'choose_ssh_port' 'success' ;;
+      2) record_step 'choose_ssh_port' 'skipped' ;;
+      *) record_step 'choose_ssh_port' 'failed' ;;
+    esac
+    run_step 'firewall_setup' firewall_setup
+    run_step 'ssh_configure' ssh_configure
+  else
+    record_step 'choose_ssh_port' 'skipped'
+    run_step 'firewall_setup' firewall_setup
+    record_step 'ssh_configure' 'skipped'
+  fi
+  run_step 'fail2ban_setup' fail2ban_setup
+  run_step 'unattended_enable' unattended_enable
+  if confirm '是否执行 Swap 配置？[y/N]' 'Configure swap now? [y/N]'; then
+    run_step 'swap_setup' swap_setup
+  else
+    record_step 'swap_setup' 'skipped'
+  fi
+}
+
+system_menu() {
+  while true; do
+    say '==== 系统维护 ====' '==== System Maintenance ===='
+    if [ "$LANG_CHOICE" = 'zh' ]; then
+      printf '%s\n' '1) 系统更新'
+      printf '%s\n' '2) 常用工具安装'
+      printf '%s\n' '3) 添加普通用户 + sudo'
+      printf '%s\n' '4) 安全更新 (unattended-upgrades)'
+      printf '%s\n' '5) logrotate 配置'
+      printf '%s\n' '6) 1panel 安装'
+      printf '%s\n' 'b) 返回'
+    else
+      printf '%s\n' '1) System update'
+      printf '%s\n' '2) Install tools'
+      printf '%s\n' '3) Add user + sudo'
+      printf '%s\n' '4) Enable unattended-upgrades'
+      printf '%s\n' '5) logrotate setup'
+      printf '%s\n' '6) Install 1panel'
+      printf '%s\n' 'b) Back'
+    fi
+    printf '%s ' '> '
+    read -r op
+    case "$op" in
+      1) run_step 'system_update' system_update ;;
+      2) run_step 'tools_install' tools_install ;;
+      3) run_step 'user_add' user_add ;;
+      4) run_step 'unattended_enable' unattended_enable ;;
+      5) run_step 'logrotate_setup' logrotate_setup ;;
+      6) run_step 'onepanel_install' onepanel_install ;;
+      b|B) return 0 ;;
+      *) say '输入无效。' 'Invalid input.' ;;
+    esac
+  done
+}
+
+main_menu() {
+  while true; do
+    say '==== LinuxVM-Init 菜单 ====' '==== LinuxVM-Init Menu ===='
+    show_main_dashboard
+    say '提示：输入编号执行；输入 q 退出。' 'Tip: enter a number to run; enter q to quit.'
+    if [ "$LANG_CHOICE" = 'zh' ]; then
+      printf '%s\n' '0) Init 一键顺序配置（推荐）'
+      printf '%s\n' '1) SSH 管理面板'
+      printf '%s\n' '2) Docker 管理面板'
+      printf '%s\n' '3) 防火墙管理面板'
+      printf '%s\n' '4) fail2ban 管理面板'
+      printf '%s\n' '5) 系统维护'
+      printf '%s\n' '6) Swap 管理'
+      printf '%s\n' '7) 快照与回滚'
+      printf '%s\n' '8) 巡检与每日简报'
+      printf '%s\n' '9) 脚本更新'
+      printf '%s\n' '99) 新手一键修复（应急）'
+      printf '%s\n' 'q) 退出'
+    else
+      printf '%s\n' '0) Init one-click flow (recommended)'
+      printf '%s\n' '1) SSH panel'
+      printf '%s\n' '2) Docker panel'
+      printf '%s\n' '3) Firewall panel'
+      printf '%s\n' '4) fail2ban panel'
+      printf '%s\n' '5) System maintenance'
+      printf '%s\n' '6) Swap management'
+      printf '%s\n' '7) Snapshot and restore'
+      printf '%s\n' '8) Inspection and daily report'
+      printf '%s\n' '9) Script update'
+      printf '%s\n' '99) Novice one-click safe repair (emergency)'
+      printf '%s\n' 'q) Quit'
+    fi
+    printf '%s ' '> '
+    read -r choice
+    case "$choice" in
+      0) run_step 'init_flow' init_flow ;;
+      1) run_step 'ssh_manage' ssh_manage ;;
+      2) run_step 'docker_manage' docker_manage ;;
+      3) run_step 'firewall_manage' firewall_manage ;;
+      4) run_step 'fail2ban_manage' fail2ban_manage ;;
+      5) run_step 'system_menu' system_menu ;;
+      6) run_step 'swap_manage' swap_manage ;;
+      7) run_step 'snapshot_manage' snapshot_manage ;;
+      8) run_step 'monitor_manage' monitor_manage ;;
+      9) run_step 'script_update' script_update ;;
+      99) run_step 'novice_safe_repair' novice_safe_repair ;;
+      q|Q) break ;;
+      *) say '选择无效。' 'Invalid choice.' ;;
+    esac
+    pause
+  done
+}
