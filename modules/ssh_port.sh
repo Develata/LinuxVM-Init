@@ -5,8 +5,14 @@ choose_ssh_port() {
   say '选择端口方式：1 手动输入 / 2 随机生成' 'Choose port mode: 1 manual / 2 random'
   printf '%s ' '> '
   read -r mode
+  if [ "$mode" != '1' ] && [ "$mode" != '2' ]; then
+    say '输入无效，请输入 1 或 2。' 'Invalid input, please enter 1 or 2.'
+    return 1
+  fi
   if [ "$mode" = '1' ]; then
     local input_port
+    local existing_port
+    existing_port="$(current_ssh_port)"
     ask '请输入 SSH 端口(1024-65535)：' 'Enter SSH port (1024-65535):' input_port
     if ! [[ "$input_port" =~ ^[0-9]+$ ]] || [ "$input_port" -lt 1024 ] || [ "$input_port" -gt 65535 ]; then
       say '端口无效，取消操作。' 'Invalid port, aborting.'
@@ -16,7 +22,7 @@ choose_ssh_port() {
       say '该端口属于保留黑名单，请换一个端口。' 'This port is in reserved blacklist. Choose another one.'
       return 1
     fi
-    if is_port_in_use "$input_port"; then
+    if [ "$input_port" != "$existing_port" ] && is_port_in_use "$input_port"; then
       say '该端口已被占用，请换一个端口。' 'This port is already in use. Choose another one.'
       return 1
     fi
@@ -81,6 +87,18 @@ EOF
     fi
   fi
 
-  restart_ssh
-  say '已尝试重启 SSH 服务。' 'SSH service restart attempted.'
+  if ! validate_sshd_config; then
+    say 'SSH 配置语法校验失败，已回滚到备份。' 'SSH config validation failed, rolled back to backup.'
+    rollback_sshd_config
+    return 1
+  fi
+
+  if ! restart_ssh; then
+    say 'SSH 服务重启失败，已回滚到备份并尝试恢复服务。' 'SSH restart failed, rolled back and trying to recover service.'
+    rollback_sshd_config
+    restart_ssh || true
+    return 1
+  fi
+  say 'SSH 服务重启成功。' 'SSH service restarted successfully.'
+  print_ssh_test_hint
 }

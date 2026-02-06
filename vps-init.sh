@@ -11,12 +11,15 @@ source "$BASE_DIR/modules/ssh_common.sh"
 source "$BASE_DIR/modules/ssh_port.sh"
 source "$BASE_DIR/modules/ssh_auth.sh"
 source "$BASE_DIR/modules/ufw.sh"
+source "$BASE_DIR/modules/firewall_manage.sh"
 source "$BASE_DIR/modules/swap.sh"
 source "$BASE_DIR/modules/docker.sh"
 source "$BASE_DIR/modules/logrotate.sh"
 source "$BASE_DIR/modules/fail2ban.sh"
+source "$BASE_DIR/modules/fail2ban_manage.sh"
 source "$BASE_DIR/modules/unattended.sh"
 source "$BASE_DIR/modules/1panel.sh"
+source "$BASE_DIR/modules/manage_center.sh"
 
 select_language() {
   printf '%s\n' 'Select language / 选择语言'
@@ -105,7 +108,7 @@ recommended_flow() {
   else
     record_step 'choose_ssh_port' 'failed'
   fi
-  run_step 'ufw_setup' ufw_setup
+  run_step 'firewall_setup' firewall_setup
   run_step 'ssh_configure' ssh_configure
   run_step 'unattended_enable' unattended_enable
 }
@@ -118,7 +121,7 @@ main_menu() {
       printf '%s\n' '1) 系统更新'
       printf '%s\n' '2) 常用工具安装'
       printf '%s\n' '3) 添加普通用户 + sudo'
-      printf '%s\n' '4) 防火墙 ufw 配置'
+      printf '%s\n' '4) 防火墙配置 (ufw/iptables)'
       printf '%s\n' '5) SSH 安全配置（改端口/禁 root）'
       printf '%s\n' '6) SSH 密钥登录配置'
       printf '%s\n' '7) Docker 安装与日志限制'
@@ -127,13 +130,14 @@ main_menu() {
       printf '%s\n' '10) fail2ban 配置'
       printf '%s\n' '11) 安全更新 (unattended-upgrades)'
       printf '%s\n' '12) 1panel 安装'
+      printf '%s\n' '13) 常驻管理中心'
       printf '%s\n' 'q) 退出'
     else
       printf '%s\n' '0) Recommended bundle'
       printf '%s\n' '1) System update'
       printf '%s\n' '2) Install tools'
       printf '%s\n' '3) Add user + sudo'
-      printf '%s\n' '4) Configure ufw firewall'
+      printf '%s\n' '4) Configure firewall (ufw/iptables)'
       printf '%s\n' '5) SSH hardening (port/root)'
       printf '%s\n' '6) SSH key login'
       printf '%s\n' '7) Install Docker + log limits'
@@ -142,6 +146,7 @@ main_menu() {
       printf '%s\n' '10) fail2ban setup'
       printf '%s\n' '11) Enable unattended-upgrades'
       printf '%s\n' '12) Install 1panel'
+      printf '%s\n' '13) Persistent management center'
       printf '%s\n' 'q) Quit'
     fi
     printf '%s ' '> '
@@ -151,7 +156,7 @@ main_menu() {
       1) run_step 'system_update' system_update ;;
       2) run_step 'tools_install' tools_install ;;
       3) run_step 'user_add' user_add ;;
-      4) run_step 'ufw_setup' ufw_setup ;;
+      4) run_step 'firewall_setup' firewall_setup ;;
       5) run_step 'ssh_configure' ssh_configure ;;
       6) run_step 'ssh_key_login' ssh_key_login ;;
       7) run_step 'docker_install' docker_install ;;
@@ -160,6 +165,7 @@ main_menu() {
       10) run_step 'fail2ban_setup' fail2ban_setup ;;
       11) run_step 'unattended_enable' unattended_enable ;;
       12) run_step 'onepanel_install' onepanel_install ;;
+      13) run_step 'manage_center' manage_center ;;
       q|Q) break ;;
       *) say '选择无效。' 'Invalid choice.' ;;
     esac

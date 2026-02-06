@@ -15,6 +15,32 @@ restart_ssh() {
   systemctl restart sshd 2>/dev/null || systemctl restart ssh
 }
 
+validate_sshd_config() {
+  local sshd_bin
+  sshd_bin="$(command -v sshd 2>/dev/null || true)"
+  if [ -z "$sshd_bin" ]; then
+    return 1
+  fi
+  "$sshd_bin" -t -f /etc/ssh/sshd_config >/dev/null 2>&1
+}
+
+rollback_sshd_config() {
+  if [ -f /etc/ssh/sshd_config.bak ]; then
+    cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config
+  fi
+}
+
+print_ssh_test_hint() {
+  local port
+  port="$(effective_ssh_port)"
+  say '请先在新终端测试连接成功，再关闭当前会话。' 'Test SSH in a new terminal before closing current session.'
+  if [ "$LANG_CHOICE" = 'zh' ]; then
+    printf '%s\n' "测试命令(替换用户名和IP): ssh -p ${port} YOUR_USER@YOUR_SERVER_IP"
+  else
+    printf '%s\n' "Test command (replace user and IP): ssh -p ${port} YOUR_USER@YOUR_SERVER_IP"
+  fi
+}
+
 current_ssh_port() {
   local p
   p="$(awk '/^[[:space:]]*Port[[:space:]]+[0-9]+/ {print $2; exit}' /etc/ssh/sshd_config 2>/dev/null)"

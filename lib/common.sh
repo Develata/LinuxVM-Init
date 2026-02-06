@@ -99,6 +99,7 @@ print_rollback_hints() {
   say 'SSH 配置回滚：cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config && systemctl restart sshd || systemctl restart ssh' 'SSH rollback: cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config && systemctl restart sshd || systemctl restart ssh'
   say 'Docker 配置回滚：cp /etc/docker/daemon.json.bak /etc/docker/daemon.json && systemctl restart docker' 'Docker rollback: cp /etc/docker/daemon.json.bak /etc/docker/daemon.json && systemctl restart docker'
   say '查看防火墙：ufw status numbered（手动删除错误规则）' 'Check firewall: ufw status numbered (delete wrong rules manually)'
+  say 'iptables 回滚：iptables-restore < /etc/iptables/rules.v4.bak && netfilter-persistent save' 'iptables rollback: iptables-restore < /etc/iptables/rules.v4.bak && netfilter-persistent save'
   say 'Swap 回滚：swapoff /root/swapfile && rm -f /root/swapfile（并手动清理 /etc/fstab）' 'Swap rollback: swapoff /root/swapfile && rm -f /root/swapfile (clean /etc/fstab manually)'
 }
 
@@ -129,4 +130,9 @@ backup_file() {
 
 is_installed() {
   command -v "$1" >/dev/null 2>&1
+}
+
+is_valid_port() {
+  local port="$1"
+  [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]
 }
