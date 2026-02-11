@@ -3,8 +3,7 @@
 user_add() {
   say '风险提示：禁用 root 登录前必须有可用 sudo 用户。' 'Warning: you need a sudo user before disabling root login.'
   say '风险提示：加入 sudo 组后该用户拥有管理权限。' 'Warning: sudo group grants admin privileges.'
-  say '操作说明：先输入用户名，随后系统会让你设置密码（输入时不显示字符，正常现象）。' 'How to proceed: enter a username first, then set password (characters are hidden, this is normal).'
-  say '操作说明：密码确认后，其余资料项可连续回车使用默认值，最后输入 Y 确认创建。' 'How to proceed: after password confirmation, press Enter through profile fields, then type Y to confirm.'
+  say '操作说明：先输入用户名，再单独设置该用户密码（输入时不显示字符，正常现象）。' 'How to proceed: enter username, then set password in a separate step (hidden input is expected).'
   ask '请输入要创建的用户名：' 'Enter a username to create:' new_user
   if [ -z "$new_user" ]; then
     say '用户名不能为空。' 'Username cannot be empty.'
@@ -17,7 +16,16 @@ user_add() {
   if id -u "$new_user" >/dev/null 2>&1; then
     say '用户已存在，跳过创建。' 'User already exists, skipping.'
   else
-    run_cmd "adduser -- \"$new_user\""
+    run_cmd "adduser --disabled-password --gecos '' -- \"$new_user\"" || return 1
+    if [ "$NON_INTERACTIVE" = '1' ]; then
+      say '非交互模式下无法设置用户密码，请手动执行：passwd 用户名' 'Cannot set password in non-interactive mode. Run manually: passwd <username>'
+      return 1
+    fi
+    say "请为用户 ${new_user} 设置密码：" "Set password for ${new_user}:"
+    if ! passwd "$new_user"; then
+      say '密码设置失败，取消操作。' 'Failed to set password, aborting.'
+      return 1
+    fi
   fi
   if confirm '是否加入 sudo 组？[y/N]' 'Add user to sudo group? [y/N]'; then
     run_cmd "adduser -- \"$new_user\" sudo"
