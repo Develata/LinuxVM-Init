@@ -6,6 +6,16 @@ TARGET_CMD='/usr/local/bin/lvm'
 SOURCE_SCRIPT="$BASE_DIR/vps-init.sh"
 MARKER='# LinuxVM-Init managed wrapper'
 
+is_linuxvm_repo_script() {
+  local target="$1"
+  local target_dir
+  [ -f "$target" ] || return 1
+  target_dir="$(cd "$(dirname "$target")" && pwd)"
+  [ -f "$target_dir/vps-init.sh" ] || return 1
+  [ -d "$target_dir/lib" ] || return 1
+  [ -d "$target_dir/modules" ] || return 1
+}
+
 if [ "$(id -u)" -ne 0 ]; then
   printf '%s\n' 'Please run as root: sudo bash install.sh'
   exit 1
@@ -18,9 +28,15 @@ fi
 
 if [ -L "$TARGET_CMD" ]; then
   existing_target="$(readlink -f "$TARGET_CMD" 2>/dev/null || true)"
-  if [ -n "$existing_target" ] && [ "$existing_target" != "$SOURCE_SCRIPT" ]; then
-    printf '%s\n' "Existing lvm symlink points to: $existing_target"
+  if [ "$existing_target" = "$SOURCE_SCRIPT" ]; then
+    printf '%s\n' "lvm already points to current repo script: $SOURCE_SCRIPT"
+  elif is_linuxvm_repo_script "$existing_target"; then
+    printf '%s\n' "Existing lvm symlink points to another LinuxVM-Init repo: $existing_target"
     printf '%s\n' 'It will be replaced with current repo path.'
+  else
+    printf '%s\n' "Refusing to replace unmanaged symlink: $TARGET_CMD -> ${existing_target:-unknown}"
+    printf '%s\n' 'Please check it manually to avoid overriding unrelated commands.'
+    exit 1
   fi
   rm -f "$TARGET_CMD"
 elif [ -f "$TARGET_CMD" ]; then

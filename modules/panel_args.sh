@@ -25,6 +25,10 @@ parse_args() {
         DISTRO_ID="${1:-}"
         PARSE_DISTRO_SET='1'
         ;;
+      *)
+        printf '%s\n' "Unknown argument: $1" >&2
+        return 1
+        ;;
     esac
     shift
   done

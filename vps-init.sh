@@ -50,7 +50,7 @@ run_step() {
   return "$rc"
 }
 
-parse_args "$@"
+parse_args "$@" || exit 1
 ensure_log
 init_summary
 require_root

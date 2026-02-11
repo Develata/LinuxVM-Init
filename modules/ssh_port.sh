@@ -86,15 +86,23 @@ ssh_apply_selected_port() {
   if [ "$DISTRO_ID" = 'ubuntu24' ]; then
     say '风险提示：Ubuntu24 可能需要配置 ssh.socket 双栈端口。' 'Warning: Ubuntu24 may require ssh.socket dual-stack config.'
     if confirm '是否写入 ssh.socket 端口配置？[y/N]' 'Write ssh.socket port config? [y/N]'; then
+      local keep_legacy_22='no'
+      if confirm '是否同时保留 22 端口监听？[y/N]' 'Keep port 22 listening as well? [y/N]'; then
+        keep_legacy_22='yes'
+      fi
       mkdir -p /etc/systemd/system/ssh.socket.d
       cat > /etc/systemd/system/ssh.socket.d/override.conf <<EOF
 [Socket]
 ListenStream=
 ListenStream=0.0.0.0:$SSH_PORT
 ListenStream=[::]:$SSH_PORT
+EOF
+      if [ "$keep_legacy_22" = 'yes' ]; then
+        cat >> /etc/systemd/system/ssh.socket.d/override.conf <<EOF
 ListenStream=0.0.0.0:22
 ListenStream=[::]:22
 EOF
+      fi
       run_cmd 'systemctl daemon-reload'
       run_cmd 'systemctl restart ssh.socket'
     fi
