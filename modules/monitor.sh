@@ -44,6 +44,9 @@ monitor_disable_daily() {
 }
 
 monitor_run_now() {
+  if [ ! -x "$MONITOR_SCRIPT" ]; then
+    monitor_write_script
+  fi
   run_cmd "$MONITOR_SCRIPT"
   run_cmd 'ls -1t /var/log/linuxvm-init/daily-*.log 2>/dev/null | head -n 1 | xargs -r tail -n 80'
 }

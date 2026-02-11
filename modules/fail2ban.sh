@@ -35,6 +35,9 @@ fail2ban_setup() {
   local findtime='300'
   local bantime='86400'
   local source_ip
+  local in_maxretry=''
+  local in_findtime=''
+  local in_bantime=''
   f2b_port="$(effective_ssh_port)"
   source_ip="$(detect_source_ip)"
 

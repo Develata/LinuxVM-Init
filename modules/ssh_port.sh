@@ -77,7 +77,7 @@ ssh_apply_selected_port() {
   snapshot_create 'before-ssh-configure'
   set_sshd_option 'Port' "$SSH_PORT"
   if is_installed ufw; then
-    run_cmd "ufw allow $SSH_PORT"
+    protocol_allow_ssh_ufw "$SSH_PORT"
   fi
   if [ "$disable_root" = 'yes' ]; then
     set_sshd_option 'PermitRootLogin' 'no'
@@ -118,7 +118,7 @@ ssh_change_port_only() {
   snapshot_create 'before-ssh-port-change'
   set_sshd_option 'Port' "$SSH_PORT"
   if is_installed ufw; then
-    run_cmd "ufw allow $SSH_PORT"
+    protocol_allow_ssh_ufw "$SSH_PORT"
   fi
 
   if ! apply_sshd_changes; then

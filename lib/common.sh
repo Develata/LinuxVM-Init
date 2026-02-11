@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+# shellcheck disable=SC2034
 LANG_CHOICE='zh'
 LOG_FILE='/var/log/vps-init.log'
 DISTRO_ID=''

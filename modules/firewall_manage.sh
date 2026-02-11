@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 ufw_manage_menu() {
+  local rule_no=''
   while true; do
     say '==== UFW 管理 ====' '==== UFW Management ===='
     if [ "$LANG_CHOICE" = 'zh' ]; then

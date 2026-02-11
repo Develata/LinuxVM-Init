@@ -47,6 +47,8 @@ refresh_version_info() {
     CURRENT_VERSION="$local_ver"
     LATEST_VERSION="$local_ver"
   fi
+
+  : "${CURRENT_VERSION}" "${LATEST_VERSION}"
 }
 
 ensure_version_info() {

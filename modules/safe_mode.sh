@@ -17,8 +17,8 @@ novice_safe_repair() {
   if [ "$fw_mode" = 'iptables' ] && is_installed iptables; then
     run_cmd 'DEBIAN_FRONTEND=noninteractive apt install -y iptables-persistent'
     iptables_ensure_base_rules
-    [ -n "$src_ip" ] && run_cmd "iptables -I INPUT 1 -p tcp -s $src_ip --dport $FIREWALL_SSH_PORT -j ACCEPT"
-    iptables_allow_port "$FIREWALL_SSH_PORT"
+    [ -n "$src_ip" ] && protocol_allow_ssh_iptables_from_ip "$FIREWALL_SSH_PORT" "$src_ip"
+    protocol_allow_ssh_iptables "$FIREWALL_SSH_PORT"
     run_cmd 'iptables -P INPUT DROP'
     run_cmd 'iptables -P FORWARD DROP'
     run_cmd 'iptables -P OUTPUT ACCEPT'
@@ -29,8 +29,8 @@ novice_safe_repair() {
     if ! is_installed ufw; then
       run_cmd 'apt install -y ufw'
     fi
-    run_cmd "ufw allow $FIREWALL_SSH_PORT"
-    [ -n "$src_ip" ] && run_cmd "ufw allow from $src_ip to any port $FIREWALL_SSH_PORT proto tcp"
+    protocol_allow_ssh_ufw "$FIREWALL_SSH_PORT"
+    [ -n "$src_ip" ] && protocol_allow_ssh_ufw_from_ip "$FIREWALL_SSH_PORT" "$src_ip"
     run_cmd 'ufw --force enable'
     state_set 'FIREWALL_MODE' 'ufw'
   fi

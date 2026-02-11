@@ -26,10 +26,10 @@ apply_source_ip_whitelist_firewall() {
 
   say "来源 IP 白名单保护：$source_ip" "Source IP whitelist protection: $source_ip"
   if state_get 'FIREWALL_MODE' | grep -q '^ufw$'; then
-    run_cmd "ufw allow from $source_ip to any port $FIREWALL_SSH_PORT proto tcp"
+    protocol_allow_ssh_ufw_from_ip "$FIREWALL_SSH_PORT" "$source_ip"
   else
     if ! iptables -C INPUT -p tcp -s "$source_ip" --dport "$FIREWALL_SSH_PORT" -j ACCEPT >/dev/null 2>&1; then
-      run_cmd "iptables -I INPUT 1 -p tcp -s $source_ip --dport $FIREWALL_SSH_PORT -j ACCEPT"
+      protocol_allow_ssh_iptables_from_ip "$FIREWALL_SSH_PORT" "$source_ip"
     fi
   fi
 }
@@ -57,15 +57,15 @@ ufw_setup() {
   snapshot_create 'before-ufw-setup'
   detect_ssh_port_for_firewall || return 1
   say "防火墙将强制放行 SSH 端口 ${FIREWALL_SSH_PORT}" "Firewall will always allow SSH port ${FIREWALL_SSH_PORT}"
-  run_cmd "ufw allow $FIREWALL_SSH_PORT"
+  protocol_allow_ssh_ufw "$FIREWALL_SSH_PORT"
   state_set 'FIREWALL_MODE' 'ufw'
   apply_source_ip_whitelist_firewall
 
   if confirm '放行 80 端口 (HTTP)？[y/N]' 'Allow port 80 (HTTP)? [y/N]'; then
-    run_cmd 'ufw allow 80'
+    protocol_allow_http_ufw
   fi
   if confirm '放行 443 端口 (HTTPS)？[y/N]' 'Allow port 443 (HTTPS)? [y/N]'; then
-    run_cmd 'ufw allow 443'
+    protocol_allow_https_ufw
   fi
 
   local ufw_defaults
@@ -124,12 +124,12 @@ iptables_setup() {
   say "防火墙将强制放行 SSH 端口 ${FIREWALL_SSH_PORT}" "Firewall will always allow SSH port ${FIREWALL_SSH_PORT}"
   state_set 'FIREWALL_MODE' 'iptables'
   apply_source_ip_whitelist_firewall
-  iptables_allow_port "$FIREWALL_SSH_PORT"
+  protocol_allow_ssh_iptables "$FIREWALL_SSH_PORT"
   if confirm '放行 80 端口 (HTTP)？[y/N]' 'Allow port 80 (HTTP)? [y/N]'; then
-    iptables_allow_port '80'
+    protocol_allow_http_iptables
   fi
   if confirm '放行 443 端口 (HTTPS)？[y/N]' 'Allow port 443 (HTTPS)? [y/N]'; then
-    iptables_allow_port '443'
+    protocol_allow_https_iptables
   fi
 
   say "二次确认：即将放行 SSH 端口 ${FIREWALL_SSH_PORT}；即将启用默认策略 INPUT=DROP, FORWARD=DROP, OUTPUT=ACCEPT" "Final check: SSH port ${FIREWALL_SSH_PORT} will be allowed; default policy to apply: INPUT=DROP, FORWARD=DROP, OUTPUT=ACCEPT"

@@ -8,11 +8,19 @@ parse_args() {
       --non-interactive) NON_INTERACTIVE='1' ;;
       --yes) NI_AUTO_YES='1' ;;
       --lang)
+        if [ "$#" -lt 2 ]; then
+          printf '%s\n' 'Missing value for --lang (expected: zh or en)' >&2
+          return 1
+        fi
         shift
         [ "${1:-}" = 'en' ] && LANG_CHOICE='en' || LANG_CHOICE='zh'
         PARSE_LANG_SET='1'
         ;;
       --distro)
+        if [ "$#" -lt 2 ]; then
+          printf '%s\n' 'Missing value for --distro (expected e.g. debian12, ubuntu24)' >&2
+          return 1
+        fi
         shift
         DISTRO_ID="${1:-}"
         PARSE_DISTRO_SET='1'
@@ -20,6 +28,7 @@ parse_args() {
     esac
     shift
   done
+  : "${NON_INTERACTIVE}"
 }
 
 load_saved_preferences() {
@@ -45,8 +54,10 @@ load_saved_preferences() {
         DISTRO_ID="$saved_distro"
         PREF_DISTRO_LOADED='1'
         ;;
-    esac
+      esac
   fi
+
+  : "${PREF_LANG_LOADED}" "${PREF_DISTRO_LOADED}"
 }
 
 persist_preferences() {
@@ -111,6 +122,7 @@ select_language() {
 
 select_distro() {
   local detected=''
+  local use_detect=''
   detected="$(detect_current_distro)"
 
   if [ -n "$detected" ]; then
