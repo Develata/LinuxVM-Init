@@ -100,8 +100,10 @@ iptables_allow_port() {
   local port="$1"
   while iptables_has_rule "$port"; do
     run_cmd "iptables -D INPUT -p tcp --dport $port -j ACCEPT"
+    run_cmd "iptables -D INPUT -p udp --dport $port -j ACCEPT"
   done
   run_cmd "iptables -A INPUT -p tcp --dport $port -j ACCEPT"
+  run_cmd "iptables -A INPUT -p udp --dport $port -j ACCEPT"
 }
 
 iptables_setup() {
