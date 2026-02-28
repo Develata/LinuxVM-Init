@@ -236,6 +236,8 @@
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.85rem;
       line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-all;
       min-height: 200px;
       max-height: 500px;
       overflow-y: auto;
@@ -302,6 +304,7 @@
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.88rem;
       line-height: 1.8;
+      white-space: pre;
       overflow-x: auto;
     }
     .arch-tree .dir { color: var(--accent); font-weight: 700; }
@@ -627,27 +630,40 @@
           // instant line
           el.insertAdjacentHTML('beforeend', line + '\n');
           setTimeout(nextLine, lineDelay);
-        } else if (line.typed) {
-          // typed char by char
+        } else if (line.typed !== undefined) {
+          // typed char by char, with optional instant prefix HTML
+          if (line.prefix) {
+            el.insertAdjacentHTML('beforeend', line.prefix);
+          }
           let i = 0;
           const span = document.createElement('span');
+          if (line.cls) span.className = line.cls;
           el.appendChild(span);
           const cursor = document.createElement('span');
           cursor.className = 'typed-cursor';
           el.appendChild(cursor);
 
+          function finishTypedLine() {
+            cursor.remove();
+            el.insertAdjacentHTML('beforeend', '\n');
+            setTimeout(nextLine, line.pause || 400);
+          }
+
           function typeChar() {
             if (i < line.typed.length) {
-              span.innerHTML += line.typed.charAt(i) === ' ' ? ' ' : line.typed.charAt(i);
+              span.textContent += line.typed.charAt(i);
               i++;
               setTimeout(typeChar, line.speed || MED);
             } else {
-              cursor.remove();
-              el.insertAdjacentHTML('beforeend', '\n');
-              setTimeout(nextLine, line.pause || 400);
+              finishTypedLine();
             }
           }
-          typeChar();
+
+          if (line.typed.length === 0) {
+            setTimeout(finishTypedLine, 300);
+          } else {
+            typeChar();
+          }
         } else if (line.delay) {
           setTimeout(nextLine, line.delay);
         }
@@ -666,11 +682,11 @@
         'Select language / 选择语言',
         '1) 中文',
         '2) English',
-        { typed: '<span class="t-blue">&gt;</span> 1', speed: SLOW, pause: 500 },
+        { prefix: '<span class="t-blue">&gt;</span> ', typed: '1', speed: SLOW, pause: 500 },
         '',
         '<span class="t-green">自动检测到系统：debian12</span>',
         '<span class="t-blue">是否使用该检测结果？[Y/n]（回车默认使用）:</span> ',
-        { typed: '<span class="t-blue"></span>', speed: SLOW, pause: 300 },
+        { typed: '', speed: SLOW, pause: 300 },
         '',
         '<span class="t-green">已使用上次语言设置：zh</span>',
         '请保持当前 SSH 会话，不要中断。',
@@ -699,7 +715,7 @@
         '10) 清空已记住的语言/系统',
         '99) 新手一键修复（应急）',
         'q) 退出',
-        { typed: '<span class="t-dim">&gt;</span> 0', speed: SLOW, pause: 600 },
+        { prefix: '<span class="t-dim">&gt;</span> ', typed: '0', speed: SLOW, pause: 600 },
       ], 50);
     };
 
@@ -708,10 +724,10 @@
       typeLines('term-init', [
         'Init 一键顺序配置将按安全顺序执行基础步骤。',
         '<span class="t-yellow">风险提示：请保持当前 SSH 会话，不要中断。</span>',
-        { typed: '<span class="t-blue">继续执行？[y/N]</span> y', speed: SLOW, pause: 400 },
+        { prefix: '<span class="t-blue">继续执行？[y/N]</span> ', typed: 'y', speed: SLOW, pause: 400 },
         '',
         '步骤1/8：系统更新。说明：会更新软件包索引并安装可升级项，可能耗时。',
-        { typed: '<span class="t-blue">执行步骤1（系统更新）？[y/N]</span> y', speed: SLOW, pause: 300 },
+        { prefix: '<span class="t-blue">执行步骤1（系统更新）？[y/N]</span> ', typed: 'y', speed: SLOW, pause: 300 },
         '<span class="t-dim">&gt;&gt; apt update</span>',
         '<span class="t-dim">Hit:1 http://deb.debian.org/debian bookworm InRelease</span>',
         '<span class="t-dim">Get:2 http://security.debian.org bookworm-security InRelease</span>',
@@ -721,23 +737,23 @@
         '<span class="t-green">已完成系统更新。</span>',
         '',
         '步骤2/8：常用工具。说明：vim 和 command-not-found 默认跳过，直接回车即可。',
-        { typed: '<span class="t-blue">执行步骤2（常用工具）？[y/N]</span> ', speed: SLOW, pause: 300 },
+        { prefix: '<span class="t-blue">执行步骤2（常用工具）？[y/N]</span> ', typed: '', speed: SLOW, pause: 300 },
         '',
         '步骤3/8：创建普通用户。说明：先输入用户名，再设置密码。',
-        { typed: '<span class="t-blue">执行步骤3（创建普通用户）？[y/N]</span> ', speed: SLOW, pause: 300 },
+        { prefix: '<span class="t-blue">执行步骤3（创建普通用户）？[y/N]</span> ', typed: '', speed: SLOW, pause: 300 },
         '',
         '步骤4/8：SSH 与防火墙。说明：若启用 SSH 设置，只需选一次端口，然后配置防火墙并应用 SSH。',
-        { typed: '<span class="t-blue">执行步骤4（SSH 与防火墙）？[y/N]</span> y', speed: SLOW, pause: 300 },
-        { typed: '<span class="t-blue">是否执行 SSH 安全设置（默认跳过）？[y/N]</span> y', speed: SLOW, pause: 300 },
+        { prefix: '<span class="t-blue">执行步骤4（SSH 与防火墙）？[y/N]</span> ', typed: 'y', speed: SLOW, pause: 300 },
+        { prefix: '<span class="t-blue">是否执行 SSH 安全设置（默认跳过）？[y/N]</span> ', typed: 'y', speed: SLOW, pause: 300 },
         '<span class="t-yellow">风险提示：修改 SSH 端口后务必用新终端测试，不要关闭当前连接。</span>',
         '<span class="t-blue">请选择 SSH 端口 (1024-65535，直接回车随机生成):</span>',
-        { typed: '<span class="t-dim">&gt;</span> ', speed: SLOW, pause: 300 },
+        { prefix: '<span class="t-dim">&gt;</span> ', typed: '', speed: SLOW, pause: 300 },
         '<span class="t-green">随机生成端口：34521</span>',
         '<span class="t-dim">&gt;&gt; ufw allow 34521/tcp</span>',
         '<span class="t-green">已放行 SSH 端口 34521。</span>',
         '',
         '步骤5/8：fail2ban。说明：默认参数已较保守，失败登录过多会自动封禁。',
-        { typed: '<span class="t-blue">执行步骤5（fail2ban）？[y/N]</span> y', speed: SLOW, pause: 300 },
+        { prefix: '<span class="t-blue">执行步骤5（fail2ban）？[y/N]</span> ', typed: 'y', speed: SLOW, pause: 300 },
         '<span class="t-dim">&gt;&gt; apt install -y fail2ban</span>',
         '<span class="t-green">fail2ban 配置完成。</span>',
       ], 45);
@@ -755,7 +771,7 @@
         '6) 查看 SSH 失败日志',
         '7) 配置密钥登录(写入 authorized_keys)',
         'b) 返回',
-        { typed: '<span class="t-dim">&gt;</span> 1', speed: SLOW, pause: 500 },
+        { prefix: '<span class="t-dim">&gt;</span> ', typed: '1', speed: SLOW, pause: 500 },
         '',
         '<span class="t-cyan">==== SSH 配置摘要 ====</span>',
         '当前 SSH 端口：<span class="t-bold">34521</span>',
@@ -774,7 +790,7 @@
         '6) 查看 SSH 失败日志',
         '7) 配置密钥登录(写入 authorized_keys)',
         'b) 返回',
-        { typed: '<span class="t-dim">&gt;</span> b', speed: SLOW, pause: 300 },
+        { prefix: '<span class="t-dim">&gt;</span> ', typed: 'b', speed: SLOW, pause: 300 },
       ], 45);
     };
 
@@ -791,7 +807,7 @@
         '7) 查看当前代理',
         '8) 安装/修复 Docker Compose',
         'b) 返回',
-        { typed: '<span class="t-dim">&gt;</span> 1', speed: SLOW, pause: 500 },
+        { prefix: '<span class="t-dim">&gt;</span> ', typed: '1', speed: SLOW, pause: 500 },
         '',
         '<span class="t-dim">&gt;&gt; systemctl status docker --no-pager -l</span>',
         '<span class="t-green">●</span> docker.service - Docker Application Container Engine',
@@ -806,11 +822,11 @@
         '<span class="t-cyan">==== Docker 管理 ====</span>',
         '1) 查看 Docker 状态',
         '...',
-        { typed: '<span class="t-dim">&gt;</span> 4', speed: SLOW, pause: 400 },
+        { prefix: '<span class="t-dim">&gt;</span> ', typed: '4', speed: SLOW, pause: 400 },
         '<span class="t-blue">输入 max-size (如 10m):</span>',
-        { typed: '<span class="t-dim"></span>10m', speed: SLOW, pause: 300 },
+        { typed: '10m', speed: SLOW, pause: 300 },
         '<span class="t-blue">输入 max-file (如 3):</span>',
-        { typed: '<span class="t-dim"></span>3', speed: SLOW, pause: 300 },
+        { typed: '3', speed: SLOW, pause: 300 },
         '<span class="t-dim">&gt;&gt; systemctl daemon-reload</span>',
         '<span class="t-dim">&gt;&gt; systemctl restart docker</span>',
         '<span class="t-green">Docker 日志限制已更新。</span>',
