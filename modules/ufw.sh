@@ -85,22 +85,31 @@ iptables_has_rule() {
 }
 
 iptables_ensure_base_rules() {
+  local _tries=0
   while iptables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT >/dev/null 2>&1; do
     run_cmd 'iptables -D INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT'
+    _tries=$((_tries + 1))
+    [ "$_tries" -ge 50 ] && break
   done
   run_cmd 'iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT'
 
+  _tries=0
   while iptables -C INPUT -i lo -j ACCEPT >/dev/null 2>&1; do
     run_cmd 'iptables -D INPUT -i lo -j ACCEPT'
+    _tries=$((_tries + 1))
+    [ "$_tries" -ge 50 ] && break
   done
   run_cmd 'iptables -A INPUT -i lo -j ACCEPT'
 }
 
 iptables_allow_port() {
   local port="$1"
+  local _tries=0
   while iptables_has_rule "$port"; do
     run_cmd "iptables -D INPUT -p tcp --dport $port -j ACCEPT"
     run_cmd "iptables -D INPUT -p udp --dport $port -j ACCEPT"
+    _tries=$((_tries + 1))
+    [ "$_tries" -ge 50 ] && break
   done
   run_cmd "iptables -A INPUT -p tcp --dport $port -j ACCEPT"
   run_cmd "iptables -A INPUT -p udp --dport $port -j ACCEPT"

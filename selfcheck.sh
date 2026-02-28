@@ -51,6 +51,9 @@ if source "$BASE_DIR/lib/common.sh" \
   && source "$BASE_DIR/modules/tools.sh" \
   && source "$BASE_DIR/modules/users.sh" \
   && source "$BASE_DIR/modules/ssh_common.sh" \
+  && source "$BASE_DIR/modules/protocol_ssh.sh" \
+  && source "$BASE_DIR/modules/protocol_http.sh" \
+  && source "$BASE_DIR/modules/protocol_https.sh" \
   && source "$BASE_DIR/modules/ssh_port.sh" \
   && source "$BASE_DIR/modules/ssh_auth.sh" \
   && source "$BASE_DIR/modules/ssh_manage.sh" \

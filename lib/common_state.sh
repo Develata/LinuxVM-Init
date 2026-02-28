@@ -54,8 +54,11 @@ state_set() {
   local value="$2"
   ensure_state_dirs
   touch "$STATE_FILE"
-  if grep -qE "^${key}=" "$STATE_FILE"; then
-    sed -i -E "s|^${key}=.*|${key}=${value}|" "$STATE_FILE"
+  if grep -qxF "${key}=${value}" "$STATE_FILE"; then
+    return 0
+  fi
+  if grep -q "^${key}=" "$STATE_FILE"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$STATE_FILE"
   else
     printf '%s=%s\n' "$key" "$value" >>"$STATE_FILE"
   fi

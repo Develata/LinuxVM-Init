@@ -26,6 +26,7 @@ snapshot_create() {
   [ -f /etc/ufw/user.rules ] && cp /etc/ufw/user.rules "$dir/ufw_user.rules"
   [ -f /etc/ufw/user6.rules ] && cp /etc/ufw/user6.rules "$dir/ufw_user6.rules"
   [ -f /etc/apt/apt.conf.d/20auto-upgrades ] && cp /etc/apt/apt.conf.d/20auto-upgrades "$dir/20auto-upgrades"
+  [ -f /etc/docker/daemon.json ] && cp /etc/docker/daemon.json "$dir/daemon.json"
   [ -f "$STATE_FILE" ] && cp "$STATE_FILE" "$dir/state.env"
 
   printf 'time=%s\nreason=%s\n' "$ts" "$reason" >"$dir/meta"
@@ -58,10 +59,12 @@ snapshot_restore_by_id() {
   [ -f "$dir/ufw_user.rules" ] && cp "$dir/ufw_user.rules" /etc/ufw/user.rules
   [ -f "$dir/ufw_user6.rules" ] && cp "$dir/ufw_user6.rules" /etc/ufw/user6.rules
   [ -f "$dir/20auto-upgrades" ] && cp "$dir/20auto-upgrades" /etc/apt/apt.conf.d/20auto-upgrades
+  [ -f "$dir/daemon.json" ] && cp "$dir/daemon.json" /etc/docker/daemon.json
   [ -f "$dir/state.env" ] && cp "$dir/state.env" "$STATE_FILE"
 
   run_cmd 'systemctl restart sshd 2>/dev/null || systemctl restart ssh || true'
   run_cmd 'systemctl restart fail2ban 2>/dev/null || true'
+  run_cmd 'systemctl restart docker 2>/dev/null || true'
   run_cmd 'netfilter-persistent reload 2>/dev/null || true'
   run_cmd 'ufw reload 2>/dev/null || true'
   say '快照回滚完成。' 'Snapshot restore completed.'

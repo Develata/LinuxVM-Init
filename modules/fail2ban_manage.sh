@@ -70,7 +70,7 @@ fail2ban_ban_ip() {
     say '禁止封禁当前来源 IP，已拦截此操作。' 'Refusing to ban current source IP.'
     return 1
   fi
-  run_cmd "fail2ban-client set sshd banip $target_ip"
+  run_cmd "fail2ban-client set sshd banip '${target_ip}'"
 }
 
 fail2ban_unban_ip() {
@@ -83,7 +83,7 @@ fail2ban_unban_ip() {
     say 'IP 格式无效，请输入合法 IPv4/IPv6。' 'Invalid IP format, please use valid IPv4/IPv6.'
     return 1
   fi
-  run_cmd "fail2ban-client set sshd unbanip $target_ip"
+  run_cmd "fail2ban-client set sshd unbanip '${target_ip}'"
 }
 
 fail2ban_manage() {

@@ -4,8 +4,12 @@ set_sshd_option() {
   local key="$1"
   local value="$2"
   local file='/etc/ssh/sshd_config'
-  if grep -qE "^[[:space:]]*#?[[:space:]]*${key}[[:space:]]+" "$file"; then
-    sed -i -E "s|^[[:space:]]*#?[[:space:]]*${key}[[:space:]]+.*|${key} ${value}|" "$file"
+  if grep -qEi "^[[:space:]]*${key}[[:space:]]+" "$file"; then
+    # Replace only the first uncommented line (case-insensitive key match)
+    sed -i -E "0,/^[[:space:]]*${key}[[:space:]]+/I s|^[[:space:]]*${key}[[:space:]]+.*|${key} ${value}|I" "$file"
+  elif grep -qEi "^[[:space:]]*#[[:space:]]*${key}[[:space:]]+" "$file"; then
+    # Uncomment and set only the first commented line
+    sed -i -E "0,/^[[:space:]]*#[[:space:]]*${key}[[:space:]]+/I s|^[[:space:]]*#[[:space:]]*${key}[[:space:]]+.*|${key} ${value}|I" "$file"
   else
     printf '%s %s\n' "$key" "$value" >>"$file"
   fi
@@ -18,7 +22,7 @@ restart_ssh() {
 get_sshd_option() {
   local key="$1"
   local file='/etc/ssh/sshd_config'
-  awk -v k="$key" 'BEGIN{IGNORECASE=0} $1==k {print $2; found=1} END{if(!found) print ""}' "$file" 2>/dev/null
+  awk -v k="$key" 'BEGIN{IGNORECASE=1} $1==k {print $2; found=1; exit} END{if(!found) print ""}' "$file" 2>/dev/null
 }
 
 validate_sshd_config() {

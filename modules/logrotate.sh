@@ -13,6 +13,7 @@ logrotate_setup() {
 /var/log/auth.log
 /var/log/user.log
 /var/log/cron.log
+/var/log/vps-init.log
 {
   weekly
   rotate 3

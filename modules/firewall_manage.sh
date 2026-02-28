@@ -30,7 +30,7 @@ ufw_manage_menu() {
         if ! is_valid_port "$port"; then
           say '端口无效。' 'Invalid port.'
         else
-          run_cmd "ufw allow $port"
+          run_cmd "ufw allow '${port}'"
         fi
         ;;
       3)
@@ -38,7 +38,7 @@ ufw_manage_menu() {
         if ! is_valid_port "$port"; then
           say '端口无效。' 'Invalid port.'
         else
-          run_cmd "ufw deny $port"
+          run_cmd "ufw deny '${port}'"
         fi
         ;;
       4)
@@ -47,7 +47,7 @@ ufw_manage_menu() {
         if ! [[ "$rule_no" =~ ^[0-9]+$ ]]; then
           say '编号无效。' 'Invalid number.'
         else
-          run_cmd "ufw --force delete $rule_no"
+          run_cmd "ufw --force delete '${rule_no}'"
         fi
         ;;
       5) run_cmd 'ufw --force enable' ;;
@@ -60,8 +60,11 @@ ufw_manage_menu() {
 
 iptables_delete_port_rules() {
   local port="$1"
+  local _tries=0
   while iptables_has_rule "$port"; do
     run_cmd "iptables -D INPUT -p tcp --dport $port -j ACCEPT"
+    _tries=$((_tries + 1))
+    [ "$_tries" -ge 50 ] && break
   done
 }
 

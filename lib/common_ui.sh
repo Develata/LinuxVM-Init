@@ -53,8 +53,8 @@ confirm() {
   fi
   printf '%b%s%b ' "${C_BOLD}${C_BLUE}" "$prompt" "$C_RESET"
   read -r ans
-  case "$ans" in
-    y|Y|yes|YES) return 0 ;;
+  case "$(printf '%s' "$ans" | tr '[:upper:]' '[:lower:]')" in
+    y|yes) return 0 ;;
     *) return 1 ;;
   esac
 }

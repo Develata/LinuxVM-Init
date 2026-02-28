@@ -38,6 +38,7 @@ is_installed() {
 
 ensure_global_lvm_command() {
   local target_cmd source_script current_target
+  local marker='# LinuxVM-Init managed wrapper'
   target_cmd='/usr/local/bin/lvm'
   source_script="$BASE_DIR/vps-init.sh"
 
@@ -47,7 +48,17 @@ ensure_global_lvm_command() {
 
   if [ ! -e "$target_cmd" ]; then
     chmod +x "$source_script" 2>/dev/null || true
-    ln -sf "$source_script" "$target_cmd"
+    cat > "$target_cmd" <<WRAPPER
+#!/usr/bin/env bash
+$marker
+if [ "\${LVM_WRAPPER_SEEN:-0}" = '1' ]; then
+  printf '%s\n' 'Detected wrapper recursion. Please restore LinuxVM-Init/vps-init.sh from git.'
+  exit 1
+fi
+export LVM_WRAPPER_SEEN='1'
+exec bash "$source_script" "\$@"
+WRAPPER
+    chmod +x "$target_cmd"
     say '已自动安装全局命令：lvm' 'Global command installed automatically: lvm'
     return 0
   fi
@@ -60,6 +71,10 @@ ensure_global_lvm_command() {
     say "检测到已存在 lvm 命令链接到：$current_target" "Detected existing lvm symlink to: $current_target"
     say '请手动处理后再重试（避免覆盖你现有命令）。' 'Please resolve it manually to avoid overriding existing command.'
     return 1
+  fi
+
+  if [ -f "$target_cmd" ] && grep -qF "$marker" "$target_cmd" 2>/dev/null; then
+    return 0
   fi
 
   say '检测到系统已有非软链接的 lvm 命令。' 'Detected existing non-symlink lvm command.'

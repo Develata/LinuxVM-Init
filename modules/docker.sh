@@ -3,8 +3,29 @@
 docker_write_log_limit() {
   local max_size="$1"
   local max_file="$2"
-  backup_file '/etc/docker/daemon.json'
-  cat > /etc/docker/daemon.json <<EOF
+  local daemon_json='/etc/docker/daemon.json'
+  backup_file "$daemon_json"
+
+  if [ -s "$daemon_json" ] && command -v python3 >/dev/null 2>&1; then
+    # Merge log config into existing daemon.json, preserving other settings
+    python3 - "$daemon_json" "$max_size" "$max_file" <<'PY'
+import json, sys
+path, ms, mf = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(path) as f:
+        cfg = json.load(f)
+except Exception:
+    cfg = {}
+cfg["log-driver"] = "json-file"
+cfg.setdefault("log-opts", {})
+cfg["log-opts"]["max-size"] = ms
+cfg["log-opts"]["max-file"] = mf
+with open(path, 'w') as f:
+    json.dump(cfg, f, indent=2)
+    f.write('\n')
+PY
+  else
+    cat > "$daemon_json" <<EOF
 {
   "log-driver": "json-file",
   "log-opts": {
@@ -13,6 +34,7 @@ docker_write_log_limit() {
   }
 }
 EOF
+  fi
   run_cmd 'systemctl daemon-reload'
   run_cmd 'systemctl restart docker'
 }

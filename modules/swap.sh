@@ -31,7 +31,7 @@ swap_setup() {
     return 1
   fi
 
-  run_cmd 'swapoff -a'
+  run_cmd 'swapoff /root/swapfile 2>/dev/null || true'
   run_cmd "dd if=/dev/zero of=/root/swapfile bs=1M count=$input_mb"
   run_cmd 'chmod 600 /root/swapfile'
   run_cmd 'mkswap /root/swapfile'

@@ -47,8 +47,9 @@ sudo bash install.sh
 lvm
 ```
 
-说明：安装脚本仅会接管“当前仓库”或“其他 LinuxVM-Init 仓库”创建的 `lvm` 软链接。
-若系统中已有非项目管理的 `lvm` 文件/软链接，安装脚本会拒绝覆盖并提示你手动处理。
+说明：安装脚本会在 `/usr/local/bin/lvm` 创建一个 wrapper 脚本（非软链接），指向当前仓库的 `vps-init.sh`。
+若已存在由其他 LinuxVM-Init 仓库创建的 `lvm`（旧版软链接或 wrapper 脚本），会自动替换为当前仓库路径。
+若系统中已有非项目管理的 `lvm` 文件，安装脚本会拒绝覆盖并提示你手动处理。
 脚本启动时也会尝试自动安装 `lvm`；若检测到已存在非项目管理的 `lvm` 命令，会提示你手动处理，不会强制覆盖。
 脚本会记住你首次选择的语言和系统版本，后续执行 `lvm` 不再重复询问（可用参数覆盖）。
 
@@ -120,8 +121,9 @@ sudo bash vps-init.sh --non-interactive --distro ubuntu24
 ## 项目结构
 - `vps-init.sh`：主入口脚本（菜单与流程）
 - `VERSION`：脚本语义化版本号（例如 `v1.0.0`）
-- `install.sh`：安装全局命令 `lvm`
+- `install.sh`：安装全局命令 `lvm`（创建 wrapper 脚本）
 - `uninstall.sh`：卸载全局命令 `lvm`
+- `selfcheck.sh`：发布前自检脚本（语法、模块加载、关键函数可用性）
 - `lib/common.sh`：公共入口（聚合通用方法）
 - `lib/common_ui.sh`：交互与提示
 - `lib/common_exec.sh`：命令执行、校验、来源 IP 检测
@@ -131,6 +133,7 @@ sudo bash vps-init.sh --non-interactive --distro ubuntu24
 - `modules/ssh_common.sh`：SSH 公共能力（端口检测、配置写入）
 - `modules/ssh_port.sh`：SSH 端口与 root 登录策略
 - `modules/ssh_auth.sh`：SSH 密钥登录策略
+- `modules/panel_main.sh`：模块入口聚合（source 所有子模块）
 - `modules/`：其他功能模块（防火墙、Docker、swap、fail2ban 等）
 
 ## 执行反馈
