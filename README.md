@@ -28,12 +28,15 @@
 2. 在服务器上拉取项目：
 
 ```bash
+apt update # 更新一下apt
 apt install git # 防止没有git
 git clone https://github.com/Develata/LinuxVM-Init.git
 cd LinuxVM-Init
 ```
 
 3. 赋予执行权限并运行：
+
+root用户就直接去掉sudo
 
 ```bash
 chmod +x vps-init.sh
