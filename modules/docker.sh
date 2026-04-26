@@ -4,6 +4,7 @@ docker_write_log_limit() {
   local max_size="$1"
   local max_file="$2"
   local daemon_json='/etc/docker/daemon.json'
+  mkdir -p /etc/docker
   backup_file "$daemon_json"
 
   if [ -s "$daemon_json" ] && command -v python3 >/dev/null 2>&1; then
@@ -62,6 +63,31 @@ docker_install_compose() {
   return 1
 }
 
+is_valid_systemd_env_value() {
+  local value="$1"
+  case "$value" in
+    *$'\n'*|*$'\r'*)
+      return 1
+      ;;
+    *\"*|*\\*)
+      return 1
+      ;;
+  esac
+  return 0
+}
+
+is_valid_proxy_url() {
+  local value="$1"
+  is_valid_systemd_env_value "$value" || return 1
+  [[ "$value" =~ ^https?://[^[:space:]]+$ ]]
+}
+
+is_valid_no_proxy_value() {
+  local value="$1"
+  is_valid_systemd_env_value "$value" || return 1
+  [[ "$value" =~ ^[A-Za-z0-9_.,:/-]*$ ]]
+}
+
 docker_set_proxy() {
   local http_proxy https_proxy no_proxy
   say '用于 Docker 服务访问外网（拉取镜像等）。' 'Used by Docker service for outbound access (image pulls, etc.).'
@@ -74,6 +100,10 @@ docker_set_proxy() {
     return 1
   fi
   [ -n "$https_proxy" ] || https_proxy="$http_proxy"
+  if ! is_valid_proxy_url "$http_proxy" || ! is_valid_proxy_url "$https_proxy" || ! is_valid_no_proxy_value "$no_proxy"; then
+    say '代理格式无效：仅支持 http(s) URL，且不能包含引号、反斜杠或换行。' 'Invalid proxy format: use http(s) URLs without quotes, backslashes, or newlines.'
+    return 1
+  fi
 
   backup_file '/etc/systemd/system/docker.service.d/http-proxy.conf'
   run_cmd 'mkdir -p /etc/systemd/system/docker.service.d'
@@ -123,7 +153,7 @@ docker_install() {
   fi
 
   download_and_run_script 'Docker' 'https://get.docker.com' sh || return $?
-  docker_install_compose
+  docker_install_compose || return 1
 
   if [ -n "${SUDO_USER:-}" ]; then
     say '风险提示：加入 docker 组相当于授予接近 root 的权限。' 'Warning: docker group is near-root access.'

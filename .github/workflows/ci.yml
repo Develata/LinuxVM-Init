@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Run repository selfcheck
+        run: bash selfcheck.sh
+
+      - name: Run Debian container checks
+        run: |
+          docker run --rm \
+            -e NI_RUN_SYSTEM_UPDATE=0 \
+            -e NI_RUN_TOOLS=0 \
+            -e NI_RUN_FIREWALL=0 \
+            -e NI_RUN_FAIL2BAN=0 \
+            -e NI_RUN_UNATTENDED=0 \
+            -v "${GITHUB_WORKSPACE}:/repo:ro" \
+            -w /repo \
+            debian:12-slim \
+            bash -lc 'bash selfcheck.sh && bash vps-init.sh --non-interactive --distro debian12 --lang en'
+
+      - name: Run Ubuntu container checks
+        run: |
+          docker run --rm \
+            -e NI_RUN_SYSTEM_UPDATE=0 \
+            -e NI_RUN_TOOLS=0 \
+            -e NI_RUN_FIREWALL=0 \
+            -e NI_RUN_FAIL2BAN=0 \
+            -e NI_RUN_UNATTENDED=0 \
+            -v "${GITHUB_WORKSPACE}:/repo:ro" \
+            -w /repo \
+            ubuntu:24.04 \
+            bash -lc 'bash selfcheck.sh && bash vps-init.sh --non-interactive --distro ubuntu24 --lang en'

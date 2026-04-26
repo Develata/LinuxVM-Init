@@ -3,6 +3,7 @@
 CURRENT_VERSION='unknown'
 LATEST_VERSION='unknown'
 VERSION_INFO_LOADED='0'
+UPDATE_SNAPSHOT_FILE=''
 
 read_local_version() {
   if [ -f "$BASE_DIR/VERSION" ]; then
@@ -14,38 +15,48 @@ read_local_version() {
 
 read_remote_version() {
   if [ -d "$BASE_DIR/.git" ] && is_installed git; then
-    git -C "$BASE_DIR" show origin/master:VERSION 2>/dev/null | tr -d ' \t\r\n'
+    local upstream
+    upstream="$(git -C "$BASE_DIR" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || printf 'origin/master')"
+    git -C "$BASE_DIR" show "${upstream}:VERSION" 2>/dev/null | tr -d ' \t\r\n'
   else
     printf '%s' ''
   fi
 }
 
-refresh_version_info() {
+load_local_version_info() {
   VERSION_INFO_LOADED='1'
   CURRENT_VERSION='unknown'
   LATEST_VERSION='unknown'
 
-  local local_ver remote_ver
+  local local_ver
   local_ver="$(read_local_version)"
 
-  if [ -d "$BASE_DIR/.git" ] && is_installed git; then
-    git -C "$BASE_DIR" fetch -q origin >/dev/null 2>&1 || true
-    remote_ver="$(read_remote_version)"
+  if [ -n "$local_ver" ]; then
+    CURRENT_VERSION="$local_ver"
+  elif [ -d "$BASE_DIR/.git" ] && is_installed git; then
+    CURRENT_VERSION="$(git -C "$BASE_DIR" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
+  fi
+  LATEST_VERSION='not checked'
 
-    if [ -n "$local_ver" ]; then
-      CURRENT_VERSION="$local_ver"
-    else
-      CURRENT_VERSION="$(git -C "$BASE_DIR" rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
-    fi
+  : "${CURRENT_VERSION}" "${LATEST_VERSION}"
+}
+
+refresh_version_info() {
+  load_local_version_info
+
+  local remote_ver upstream
+  if [ -d "$BASE_DIR/.git" ] && is_installed git; then
+    upstream="$(git -C "$BASE_DIR" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || printf 'origin/master')"
+    git -C "$BASE_DIR" fetch -q "${upstream%%/*}" >/dev/null 2>&1 || true
+    remote_ver="$(read_remote_version)"
 
     if [ -n "$remote_ver" ]; then
       LATEST_VERSION="$remote_ver"
-    elif git -C "$BASE_DIR" rev-parse --short origin/master >/dev/null 2>&1; then
-      LATEST_VERSION="$(git -C "$BASE_DIR" rev-parse --short origin/master 2>/dev/null || printf 'unknown')"
+    elif git -C "$BASE_DIR" rev-parse --short "$upstream" >/dev/null 2>&1; then
+      LATEST_VERSION="$(git -C "$BASE_DIR" rev-parse --short "$upstream" 2>/dev/null || printf 'unknown')"
+    else
+      LATEST_VERSION='unknown'
     fi
-  elif [ -n "$local_ver" ]; then
-    CURRENT_VERSION="$local_ver"
-    LATEST_VERSION="$local_ver"
   fi
 
   : "${CURRENT_VERSION}" "${LATEST_VERSION}"
@@ -53,7 +64,7 @@ refresh_version_info() {
 
 ensure_version_info() {
   if [ "${VERSION_INFO_LOADED:-0}" != '1' ]; then
-    refresh_version_info
+    load_local_version_info
   fi
 }
 
@@ -62,6 +73,7 @@ create_local_update_snapshot() {
   backup_dir="$BASE_DIR/.local-backups"
   ts="$(date +%Y%m%d-%H%M%S)"
   backup_file="$backup_dir/linuxvm-init-preupdate-${ts}.tar.gz"
+  UPDATE_SNAPSHOT_FILE="$backup_file"
 
   run_cmd "mkdir -p \"$backup_dir\""
   if ! run_cmd "tar -czf \"$backup_file\" --exclude='.git' --exclude='.local-backups' -C \"$BASE_DIR\" ."; then
@@ -69,6 +81,23 @@ create_local_update_snapshot() {
     return 1
   fi
   say "已创建本地快照：$backup_file" "Local snapshot created: $backup_file"
+}
+
+rollback_script_update() {
+  local pre_ref="$1"
+  say '更新后自检失败，正在回滚到更新前版本。' 'Post-update selfcheck failed, rolling back to the pre-update version.'
+  if [ -n "$pre_ref" ] && git -C "$BASE_DIR" rev-parse --verify "$pre_ref" >/dev/null 2>&1; then
+    run_cmd "git -C \"$BASE_DIR\" reset --hard \"$pre_ref\""
+    run_cmd "chmod +x \"$BASE_DIR/vps-init.sh\" \"$BASE_DIR/selfcheck.sh\""
+    say '已回滚 git 工作区到更新前提交。' 'Git worktree rolled back to the pre-update commit.'
+  elif [ -n "$UPDATE_SNAPSHOT_FILE" ] && [ -f "$UPDATE_SNAPSHOT_FILE" ]; then
+    run_cmd "tar -xzf \"$UPDATE_SNAPSHOT_FILE\" -C \"$BASE_DIR\""
+    run_cmd "chmod +x \"$BASE_DIR/vps-init.sh\" \"$BASE_DIR/selfcheck.sh\""
+    say '已使用本地 tar 快照尝试恢复脚本文件。' 'Restored script files from the local tar snapshot.'
+  else
+    say '未找到可用回滚点，请手动检查仓库状态。' 'No rollback point found; inspect the repository manually.'
+    return 1
+  fi
 }
 
 script_update() {
@@ -82,7 +111,8 @@ script_update() {
 
   if [ -d "$BASE_DIR/.git" ] && is_installed git; then
     run_cmd "git -C \"$BASE_DIR\" status --short"
-    local dirty
+    local dirty pre_update_ref
+    pre_update_ref="$(git -C "$BASE_DIR" rev-parse HEAD 2>/dev/null || true)"
     dirty="$(git -C "$BASE_DIR" status --porcelain 2>/dev/null || true)"
     if [ -n "$dirty" ]; then
       say '检测到本地改动。建议先自动 stash，再更新。' 'Local changes detected. Recommended: auto-stash before update.'
@@ -101,8 +131,13 @@ script_update() {
       return 1
     fi
     run_cmd "chmod +x \"$BASE_DIR/vps-init.sh\" \"$BASE_DIR/selfcheck.sh\""
+    if ! run_cmd "bash \"$BASE_DIR/selfcheck.sh\""; then
+      rollback_script_update "$pre_update_ref"
+      say '更新已回滚。请查看上方自检失败原因后再重试。' 'Update rolled back. Review the selfcheck failure above before retrying.'
+      return 1
+    fi
     refresh_version_info
-    say '脚本更新完成（git pull）。建议立即运行 ./selfcheck.sh' 'Update completed via git pull. Run ./selfcheck.sh next.'
+    say '脚本更新完成（git pull），自检已通过。' 'Update completed via git pull, and selfcheck passed.'
     return 0
   fi
 
