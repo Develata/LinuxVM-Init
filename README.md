@@ -19,6 +19,7 @@
 - Docker 安装流程会同时检测并安装 Docker Compose（优先 compose 插件）。
 - 面板运维：主菜单分模块管理（SSH/防火墙/fail2ban/Docker/Swap/系统维护），可长期反复使用。
 - 安全兜底：关键变更前会创建快照，支持按快照 ID 回滚；并记录执行日志与结果汇总。
+- 第三方安装脚本（Docker/1Panel）会先下载到本地、输出 SHA256，再二次确认执行。
 
 ## 使用方式
 仓库地址：`https://github.com/Develata/LinuxVM-Init.git`
@@ -109,6 +110,7 @@ sudo bash vps-init.sh --non-interactive --distro ubuntu24
 - 主菜单 `99) 新手一键修复（安全模式）`：应急修复 SSH/防火墙/fail2ban 可用性。
 - 主菜单顶部会显示版本信息：当前脚本版本与最新版本（基于 git）。
 - 快照自动清理：默认仅保留最近 14 天快照，旧快照在创建新快照时自动清理。
+- 快照会覆盖 SSH、ssh.socket drop-in、UFW/iptables IPv4/IPv6、fail2ban、Docker、Docker systemd 代理、自动更新、`/etc/fstab` 与脚本状态文件。
 
 ### Init 步骤提示（与面板一致）
 - 每一步都会单独询问是否执行（`y/N`），不需要的步骤可直接回车跳过。
@@ -120,6 +122,29 @@ sudo bash vps-init.sh --non-interactive --distro ubuntu24
 - 步骤 6/8：自动安全更新（启用后系统会自动执行安全更新）。
 - 步骤 7/8：Swap（可选，不需要可直接回车跳过）。
 - 步骤 8/8：1panel（可选，不需要可直接回车跳过）。
+
+### 1Panel 官方安装命令
+当前 1Panel v2 官方在线安装命令为：
+
+```bash
+bash -c "$(curl -sSL https://resource.fit2cloud.com/1panel/package/v2/quick_start.sh)"
+```
+
+脚本内不会直接使用管道执行；会下载该脚本到临时文件，显示 SHA256 后再确认执行。
+
+## 应急恢复 SSH
+如果误改 SSH 或防火墙导致无法登录，优先通过云厂商 VNC/救援模式进入服务器，然后按实际情况执行：
+
+```bash
+cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config
+rm -f /etc/systemd/system/ssh.socket.d/override.conf
+systemctl daemon-reload
+systemctl restart sshd || systemctl restart ssh
+ufw status numbered
+iptables -L -n --line-numbers
+```
+
+如果使用了脚本快照，可运行 `lvm` 后进入 `7) 快照与回滚` 按快照 ID 恢复。
 
 ## 项目结构
 - `vps-init.sh`：主入口脚本（菜单与流程）
@@ -155,7 +180,7 @@ chmod +x selfcheck.sh
 ./selfcheck.sh
 ```
 
-自检覆盖：脚本语法、模块加载、关键函数可用性、基础命令可用性。
+自检覆盖：脚本语法、ShellCheck（如已安装）、模块加载、关键函数可用性、基础命令可用性。
 
 ## 安全提示
 本脚本会修改系统配置，请逐条阅读提示后再确认执行。

@@ -66,7 +66,7 @@ swap_manage() {
         say '风险提示：删除 swap 可能导致内存不足时进程被杀。' 'Warning: removing swap may cause OOM kills under memory pressure.'
         if confirm '确认删除 /root/swapfile ？[y/N]' 'Confirm removing /root/swapfile? [y/N]'; then
           run_cmd 'swapoff /root/swapfile 2>/dev/null || true'
-          run_cmd 'rm -f /root/swapfile'
+          run_argv rm -f /root/swapfile
           run_cmd "sed -i '\|/root/swapfile swap swap defaults 0 0|d' /etc/fstab"
         fi
         ;;

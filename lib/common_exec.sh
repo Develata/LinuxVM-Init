@@ -18,6 +18,25 @@ run_cmd() {
   return "${PIPESTATUS[0]}"
 }
 
+quote_args() {
+  local arg rendered=''
+  for arg in "$@"; do
+    local quoted
+    printf -v quoted '%q' "$arg"
+    rendered="${rendered}${rendered:+ }${quoted}"
+  done
+  printf '%s\n' "$rendered"
+}
+
+run_argv() {
+  local rendered
+  rendered="$(quote_args "$@")"
+  printf '%b>> %s%b\n' "${C_BOLD}${C_BLUE}" "$rendered" "$C_RESET"
+  log_line ">> $rendered"
+  "$@" 2>&1 | tee -a "$LOG_FILE"
+  return "${PIPESTATUS[0]}"
+}
+
 require_root() {
   if [ "$(id -u)" -ne 0 ]; then
     say '请以 root 身份运行。' 'Please run as root.'
@@ -28,7 +47,10 @@ require_root() {
 backup_file() {
   local file="$1"
   if [ -f "$file" ]; then
-    cp "$file" "${file}.bak"
+    local ts
+    ts="$(date +%Y%m%d-%H%M%S)"
+    cp -p "$file" "${file}.bak.${ts}"
+    cp -p "$file" "${file}.bak"
   fi
 }
 
@@ -131,4 +153,38 @@ detect_source_ip() {
   else
     printf '%s\n' ''
   fi
+}
+
+download_and_run_script() {
+  local label="$1"
+  local url="$2"
+  local interpreter="$3"
+  local tmp_file checksum rc
+
+  if ! is_installed curl; then
+    run_cmd 'apt install -y curl' || return 1
+  fi
+
+  tmp_file="$(mktemp /tmp/linuxvm-init-script.XXXXXX)" || return 1
+  say "正在下载 ${label} 安装脚本：${url}" "Downloading ${label} installer: ${url}"
+  if ! run_argv curl -fsSL "$url" -o "$tmp_file"; then
+    rm -f "$tmp_file"
+    return 1
+  fi
+
+  if is_installed sha256sum; then
+    checksum="$(sha256sum "$tmp_file" | awk '{print $1}')"
+    say "${label} 脚本 SHA256：${checksum}" "${label} script SHA256: ${checksum}"
+  fi
+
+  say '风险提示：即将以 root 权限执行刚下载的第三方安装脚本。' 'Warning: the downloaded third-party installer will run as root.'
+  if ! confirm "确认执行 ${label} 安装脚本？[y/N]" "Run ${label} installer now? [y/N]"; then
+    rm -f "$tmp_file"
+    return 2
+  fi
+
+  run_argv "$interpreter" "$tmp_file"
+  rc=$?
+  rm -f "$tmp_file"
+  return "$rc"
 }

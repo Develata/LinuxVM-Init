@@ -46,6 +46,7 @@ ssh_key_login() {
 
   backup_file '/etc/ssh/sshd_config'
   snapshot_create 'before-ssh-key-login'
+  ensure_password_disable_safe || return 1
   set_sshd_option 'PasswordAuthentication' 'no'
   set_sshd_option 'PubkeyAuthentication' 'yes'
   if ! apply_sshd_changes; then

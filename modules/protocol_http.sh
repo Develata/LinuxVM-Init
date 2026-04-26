@@ -3,7 +3,7 @@
 PROTOCOL_HTTP_PORT='80'
 
 protocol_allow_http_ufw() {
-  run_cmd "ufw allow $PROTOCOL_HTTP_PORT"
+  run_argv ufw allow "${PROTOCOL_HTTP_PORT}/tcp"
 }
 
 protocol_allow_http_iptables() {

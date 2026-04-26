@@ -16,6 +16,7 @@ fail2ban_update_policy() {
     say '/etc/fail2ban/jail.local 不存在，请先执行 fail2ban 配置。' '/etc/fail2ban/jail.local not found, run fail2ban setup first.'
     return 1
   fi
+  snapshot_create 'before-fail2ban-policy-change'
 
   ask '新的 maxretry (回车保持不变):' 'New maxretry (Enter to keep):' in_maxretry
   ask '新的 findtime 秒数 (回车保持不变):' 'New findtime seconds (Enter to keep):' in_findtime
@@ -49,7 +50,6 @@ fail2ban_update_policy() {
     sed -i -E "s|^[[:space:]]*ignoreip[[:space:]]*=.*|& ${source_ip}|" /etc/fail2ban/jail.local
   fi
 
-  snapshot_create 'before-fail2ban-policy-change'
   run_cmd 'systemctl restart fail2ban'
   run_cmd 'fail2ban-client status sshd'
 }
@@ -70,7 +70,7 @@ fail2ban_ban_ip() {
     say '禁止封禁当前来源 IP，已拦截此操作。' 'Refusing to ban current source IP.'
     return 1
   fi
-  run_cmd "fail2ban-client set sshd banip '${target_ip}'"
+  run_argv fail2ban-client set sshd banip "$target_ip"
 }
 
 fail2ban_unban_ip() {
@@ -83,7 +83,7 @@ fail2ban_unban_ip() {
     say 'IP 格式无效，请输入合法 IPv4/IPv6。' 'Invalid IP format, please use valid IPv4/IPv6.'
     return 1
   fi
-  run_cmd "fail2ban-client set sshd unbanip '${target_ip}'"
+  run_argv fail2ban-client set sshd unbanip "$target_ip"
 }
 
 fail2ban_manage() {

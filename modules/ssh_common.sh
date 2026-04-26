@@ -19,6 +19,99 @@ restart_ssh() {
   systemctl restart sshd 2>/dev/null || systemctl restart ssh
 }
 
+user_in_admin_group() {
+  local user="$1"
+  id -nG "$user" 2>/dev/null | tr ' ' '\n' | grep -Eq '^(sudo|wheel)$'
+}
+
+user_has_ssh_key() {
+  local user="$1"
+  local user_home
+  user_home="$(getent passwd "$user" | awk -F: '{print $6}')"
+  [ -n "$user_home" ] && [ -s "$user_home/.ssh/authorized_keys" ]
+}
+
+sudo_user_exists() {
+  local user
+  while IFS=: read -r user _; do
+    [ -n "$user" ] || continue
+    if user_in_admin_group "$user"; then
+      return 0
+    fi
+  done < /etc/passwd
+  return 1
+}
+
+admin_key_login_exists() {
+  local future_root_login="${1:-}"
+  local current_root_login user
+  current_root_login="$(get_sshd_option 'PermitRootLogin')"
+  [ -n "$future_root_login" ] || future_root_login="$current_root_login"
+
+  if [ "$future_root_login" != 'no' ] && user_has_ssh_key root; then
+    return 0
+  fi
+
+  while IFS=: read -r user _; do
+    [ -n "$user" ] || continue
+    if user_in_admin_group "$user" && user_has_ssh_key "$user"; then
+      return 0
+    fi
+  done < /etc/passwd
+  return 1
+}
+
+ensure_root_disable_safe() {
+  local current_password_auth
+  current_password_auth="$(get_sshd_option 'PasswordAuthentication')"
+  if ! sudo_user_exists; then
+    say '未检测到 sudo/wheel 管理用户，拒绝禁用 root 登录。' 'No sudo/wheel admin user detected; refusing to disable root login.'
+    return 1
+  fi
+  if [ "$current_password_auth" = 'no' ] && ! admin_key_login_exists 'no'; then
+    say '密码登录已关闭，且未检测到带 SSH key 的 sudo/wheel 用户，拒绝禁用 root 登录。' 'Password login is disabled and no sudo/wheel user with SSH key was detected; refusing to disable root login.'
+    return 1
+  fi
+}
+
+ensure_password_disable_safe() {
+  local future_root_login="${1:-}"
+  if ! admin_key_login_exists "$future_root_login"; then
+    say '未检测到可用的 root 或 sudo/wheel 用户 SSH key，拒绝关闭密码登录。' 'No usable root or sudo/wheel user SSH key detected; refusing to disable password login.'
+    return 1
+  fi
+}
+
+backup_ssh_socket_override() {
+  local file='/etc/systemd/system/ssh.socket.d/override.conf'
+  local marker='/etc/systemd/system/ssh.socket.d/.linuxvm-init-override-was-absent'
+  mkdir -p /etc/systemd/system/ssh.socket.d
+  if [ -f "$file" ]; then
+    backup_file "$file"
+    rm -f "$marker"
+  else
+    touch "$marker"
+  fi
+}
+
+rollback_ssh_socket_override() {
+  local file='/etc/systemd/system/ssh.socket.d/override.conf'
+  local marker='/etc/systemd/system/ssh.socket.d/.linuxvm-init-override-was-absent'
+  if [ -f "${file}.bak" ]; then
+    mkdir -p /etc/systemd/system/ssh.socket.d
+    cp "${file}.bak" "$file"
+  elif [ -f "$marker" ]; then
+    rm -f "$file"
+  fi
+  rm -f "$marker"
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  systemctl restart ssh.socket >/dev/null 2>&1 || true
+}
+
+clear_ssh_socket_override_marker() {
+  rm -f /etc/systemd/system/ssh.socket.d/.linuxvm-init-override-was-absent
+}
+
 get_sshd_option() {
   local key="$1"
   local file='/etc/ssh/sshd_config'
@@ -44,15 +137,30 @@ apply_sshd_changes() {
   if ! validate_sshd_config; then
     say 'SSH 配置语法校验失败，已回滚到备份。' 'SSH config validation failed, rolled back to backup.'
     rollback_sshd_config
+    rollback_ssh_socket_override
     return 1
   fi
 
   if ! restart_ssh; then
     say 'SSH 服务重启失败，已回滚到备份并尝试恢复服务。' 'SSH restart failed, rolled back and trying to recover service.'
     rollback_sshd_config
+    rollback_ssh_socket_override
     restart_ssh || true
     return 1
   fi
+
+  if is_installed ss || is_installed netstat; then
+    local port
+    port="$(effective_ssh_port)"
+    if ! is_port_in_use "$port"; then
+      say "SSH 新端口未检测到监听，已回滚：$port" "SSH new port is not listening, rolled back: $port"
+      rollback_sshd_config
+      rollback_ssh_socket_override
+      restart_ssh || true
+      return 1
+    fi
+  fi
+  clear_ssh_socket_override_marker
   return 0
 }
 

@@ -3,7 +3,7 @@
 PROTOCOL_HTTPS_PORT='443'
 
 protocol_allow_https_ufw() {
-  run_cmd "ufw allow $PROTOCOL_HTTPS_PORT"
+  run_argv ufw allow "${PROTOCOL_HTTPS_PORT}/tcp"
 }
 
 protocol_allow_https_iptables() {

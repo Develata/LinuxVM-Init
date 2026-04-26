@@ -28,7 +28,11 @@ apply_source_ip_whitelist_firewall() {
   if state_get 'FIREWALL_MODE' | grep -q '^ufw$'; then
     protocol_allow_ssh_ufw_from_ip "$FIREWALL_SSH_PORT" "$source_ip"
   else
-    if ! iptables -C INPUT -p tcp -s "$source_ip" --dport "$FIREWALL_SSH_PORT" -j ACCEPT >/dev/null 2>&1; then
+    if [[ "$source_ip" =~ : ]]; then
+      if is_installed ip6tables && ! ip6tables -C INPUT -p tcp -s "$source_ip" --dport "$FIREWALL_SSH_PORT" -j ACCEPT >/dev/null 2>&1; then
+        protocol_allow_ssh_iptables_from_ip "$FIREWALL_SSH_PORT" "$source_ip"
+      fi
+    elif ! iptables -C INPUT -p tcp -s "$source_ip" --dport "$FIREWALL_SSH_PORT" -j ACCEPT >/dev/null 2>&1; then
       protocol_allow_ssh_iptables_from_ip "$FIREWALL_SSH_PORT" "$source_ip"
     fi
   fi
@@ -79,40 +83,71 @@ ufw_setup() {
   run_cmd 'ufw status'
 }
 
-iptables_has_rule() {
+iptables_has_tcp_rule() {
   local port="$1"
   iptables -C INPUT -p tcp --dport "$port" -j ACCEPT >/dev/null 2>&1
+}
+
+ip6tables_has_tcp_rule() {
+  local port="$1"
+  is_installed ip6tables && ip6tables -C INPUT -p tcp --dport "$port" -j ACCEPT >/dev/null 2>&1
 }
 
 iptables_ensure_base_rules() {
   local _tries=0
   while iptables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT >/dev/null 2>&1; do
-    run_cmd 'iptables -D INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT'
+    run_argv iptables -D INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
     _tries=$((_tries + 1))
     [ "$_tries" -ge 50 ] && break
   done
-  run_cmd 'iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT'
+  run_argv iptables -I INPUT 1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
   _tries=0
   while iptables -C INPUT -i lo -j ACCEPT >/dev/null 2>&1; do
-    run_cmd 'iptables -D INPUT -i lo -j ACCEPT'
+    run_argv iptables -D INPUT -i lo -j ACCEPT
     _tries=$((_tries + 1))
     [ "$_tries" -ge 50 ] && break
   done
-  run_cmd 'iptables -A INPUT -i lo -j ACCEPT'
+  run_argv iptables -I INPUT 2 -i lo -j ACCEPT
+
+  if is_installed ip6tables; then
+    _tries=0
+    while ip6tables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT >/dev/null 2>&1; do
+      run_argv ip6tables -D INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+      _tries=$((_tries + 1))
+      [ "$_tries" -ge 50 ] && break
+    done
+    run_argv ip6tables -I INPUT 1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+    _tries=0
+    while ip6tables -C INPUT -i lo -j ACCEPT >/dev/null 2>&1; do
+      run_argv ip6tables -D INPUT -i lo -j ACCEPT
+      _tries=$((_tries + 1))
+      [ "$_tries" -ge 50 ] && break
+    done
+    run_argv ip6tables -I INPUT 2 -i lo -j ACCEPT
+  fi
 }
 
 iptables_allow_port() {
   local port="$1"
   local _tries=0
-  while iptables_has_rule "$port"; do
-    run_cmd "iptables -D INPUT -p tcp --dport $port -j ACCEPT"
-    run_cmd "iptables -D INPUT -p udp --dport $port -j ACCEPT"
+  while iptables_has_tcp_rule "$port"; do
+    run_argv iptables -D INPUT -p tcp --dport "$port" -j ACCEPT
     _tries=$((_tries + 1))
     [ "$_tries" -ge 50 ] && break
   done
-  run_cmd "iptables -A INPUT -p tcp --dport $port -j ACCEPT"
-  run_cmd "iptables -A INPUT -p udp --dport $port -j ACCEPT"
+  run_argv iptables -I INPUT 1 -p tcp --dport "$port" -j ACCEPT
+
+  if is_installed ip6tables; then
+    _tries=0
+    while ip6tables_has_tcp_rule "$port"; do
+      run_argv ip6tables -D INPUT -p tcp --dport "$port" -j ACCEPT
+      _tries=$((_tries + 1))
+      [ "$_tries" -ge 50 ] && break
+    done
+    run_argv ip6tables -I INPUT 1 -p tcp --dport "$port" -j ACCEPT
+  fi
 }
 
 iptables_setup() {
@@ -127,6 +162,9 @@ iptables_setup() {
   snapshot_create 'before-iptables-setup'
   if [ ! -f /etc/iptables/rules.v4.bak ]; then
     run_cmd 'iptables-save > /etc/iptables/rules.v4.bak'
+  fi
+  if is_installed ip6tables && [ ! -f /etc/iptables/rules.v6.bak ]; then
+    run_cmd 'ip6tables-save > /etc/iptables/rules.v6.bak'
   fi
 
   iptables_ensure_base_rules
@@ -151,6 +189,12 @@ iptables_setup() {
   run_cmd 'iptables -P INPUT DROP'
   run_cmd 'iptables -P FORWARD DROP'
   run_cmd 'iptables -P OUTPUT ACCEPT'
+  if is_installed ip6tables; then
+    run_cmd 'ip6tables -P INPUT DROP'
+    run_cmd 'ip6tables -P FORWARD DROP'
+    run_cmd 'ip6tables -P OUTPUT ACCEPT'
+    run_cmd 'ip6tables-save > /etc/iptables/rules.v6'
+  fi
   run_cmd 'iptables-save > /etc/iptables/rules.v4'
   run_cmd 'netfilter-persistent save'
   run_cmd 'netfilter-persistent reload'

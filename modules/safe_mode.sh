@@ -22,6 +22,12 @@ novice_safe_repair() {
     run_cmd 'iptables -P INPUT DROP'
     run_cmd 'iptables -P FORWARD DROP'
     run_cmd 'iptables -P OUTPUT ACCEPT'
+    if is_installed ip6tables; then
+      run_cmd 'ip6tables -P INPUT DROP'
+      run_cmd 'ip6tables -P FORWARD DROP'
+      run_cmd 'ip6tables -P OUTPUT ACCEPT'
+      run_cmd 'ip6tables-save > /etc/iptables/rules.v6'
+    fi
     run_cmd 'iptables-save > /etc/iptables/rules.v4'
     run_cmd 'netfilter-persistent save'
     run_cmd 'netfilter-persistent reload'

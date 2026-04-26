@@ -70,6 +70,7 @@ ssh_apply_selected_port() {
   say '风险提示：禁用 root 登录后，root 将无法 SSH 登录。' 'Warning: disabling root login blocks SSH root access.'
   local disable_root='no'
   if confirm '是否禁用 root 登录？输入 y 继续。' 'Disable root login? Enter y to proceed.'; then
+    ensure_root_disable_safe || return 1
     disable_root='yes'
   fi
 
@@ -90,6 +91,7 @@ ssh_apply_selected_port() {
       if confirm '是否同时保留 22 端口监听？[y/N]' 'Keep port 22 listening as well? [y/N]'; then
         keep_legacy_22='yes'
       fi
+      backup_ssh_socket_override
       mkdir -p /etc/systemd/system/ssh.socket.d
       cat > /etc/systemd/system/ssh.socket.d/override.conf <<EOF
 [Socket]
@@ -136,6 +138,7 @@ ssh_change_port_only() {
       if confirm '是否同时保留 22 端口监听？[y/N]' 'Keep port 22 listening as well? [y/N]'; then
         keep_legacy_22='yes'
       fi
+      backup_ssh_socket_override
       mkdir -p /etc/systemd/system/ssh.socket.d
       cat > /etc/systemd/system/ssh.socket.d/override.conf <<EOF
 [Socket]

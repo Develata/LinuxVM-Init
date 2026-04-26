@@ -39,7 +39,7 @@ EOF
 }
 
 monitor_disable_daily() {
-  rm -f "$MONITOR_CRON"
+  run_argv rm -f "$MONITOR_CRON"
   say '每日巡检任务已关闭。' 'Daily inspection disabled.'
 }
 

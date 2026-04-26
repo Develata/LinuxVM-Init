@@ -24,9 +24,9 @@ fail() {
 check_file_exists() {
   local file="$1"
   if [ -f "$file" ]; then
-    ok "file exists: ${file#$BASE_DIR/}"
+    ok "file exists: ${file#"$BASE_DIR"/}"
   else
-    fail "missing file: ${file#$BASE_DIR/}"
+    fail "missing file: ${file#"$BASE_DIR"/}"
   fi
 }
 
@@ -44,6 +44,16 @@ if bash -n "$BASE_DIR/vps-init.sh" "$BASE_DIR/lib/common.sh" "$BASE_DIR"/modules
   ok 'shell syntax check passed'
 else
   fail 'shell syntax check failed'
+fi
+
+if command -v shellcheck >/dev/null 2>&1; then
+  if shellcheck -x -e SC1091,SC2016 "$BASE_DIR"/install.sh "$BASE_DIR"/vps-init.sh "$BASE_DIR"/uninstall.sh "$BASE_DIR"/selfcheck.sh "$BASE_DIR"/lib/*.sh "$BASE_DIR"/modules/*.sh; then
+    ok 'shellcheck passed'
+  else
+    fail 'shellcheck failed'
+  fi
+else
+  warn 'command missing: shellcheck'
 fi
 
 if source "$BASE_DIR/lib/common.sh" \

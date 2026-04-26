@@ -23,10 +23,15 @@ snapshot_create() {
   [ -f /etc/ssh/sshd_config ] && cp /etc/ssh/sshd_config "$dir/sshd_config"
   [ -f /etc/fail2ban/jail.local ] && cp /etc/fail2ban/jail.local "$dir/jail.local"
   [ -f /etc/iptables/rules.v4 ] && cp /etc/iptables/rules.v4 "$dir/rules.v4"
+  [ -f /etc/iptables/rules.v6 ] && cp /etc/iptables/rules.v6 "$dir/rules.v6"
   [ -f /etc/ufw/user.rules ] && cp /etc/ufw/user.rules "$dir/ufw_user.rules"
   [ -f /etc/ufw/user6.rules ] && cp /etc/ufw/user6.rules "$dir/ufw_user6.rules"
   [ -f /etc/apt/apt.conf.d/20auto-upgrades ] && cp /etc/apt/apt.conf.d/20auto-upgrades "$dir/20auto-upgrades"
   [ -f /etc/docker/daemon.json ] && cp /etc/docker/daemon.json "$dir/daemon.json"
+  [ -f /etc/systemd/system/docker.service.d/http-proxy.conf ] && cp /etc/systemd/system/docker.service.d/http-proxy.conf "$dir/docker_http_proxy.conf"
+  [ -f /etc/systemd/system/ssh.socket.d/override.conf ] && cp /etc/systemd/system/ssh.socket.d/override.conf "$dir/ssh_socket_override.conf"
+  [ -f /etc/systemd/system/ssh.socket.d/override.conf ] || touch "$dir/ssh_socket_override.absent"
+  [ -f /etc/fstab ] && cp /etc/fstab "$dir/fstab"
   [ -f "$STATE_FILE" ] && cp "$STATE_FILE" "$dir/state.env"
 
   printf 'time=%s\nreason=%s\n' "$ts" "$reason" >"$dir/meta"
@@ -44,6 +49,10 @@ snapshot_list() {
 snapshot_restore_by_id() {
   local sid="$1"
   local dir="$SNAPSHOT_DIR/$sid"
+  if ! [[ "$sid" =~ ^[0-9]{8}-[0-9]{6}$ ]]; then
+    say '快照 ID 格式无效。' 'Invalid snapshot ID format.'
+    return 1
+  fi
   if [ ! -d "$dir" ]; then
     say '快照不存在。' 'Snapshot not found.'
     return 1
@@ -53,16 +62,30 @@ snapshot_restore_by_id() {
     return 2
   fi
 
-  [ -f "$dir/sshd_config" ] && cp "$dir/sshd_config" /etc/ssh/sshd_config
-  [ -f "$dir/jail.local" ] && cp "$dir/jail.local" /etc/fail2ban/jail.local
-  [ -f "$dir/rules.v4" ] && cp "$dir/rules.v4" /etc/iptables/rules.v4
-  [ -f "$dir/ufw_user.rules" ] && cp "$dir/ufw_user.rules" /etc/ufw/user.rules
-  [ -f "$dir/ufw_user6.rules" ] && cp "$dir/ufw_user6.rules" /etc/ufw/user6.rules
-  [ -f "$dir/20auto-upgrades" ] && cp "$dir/20auto-upgrades" /etc/apt/apt.conf.d/20auto-upgrades
-  [ -f "$dir/daemon.json" ] && cp "$dir/daemon.json" /etc/docker/daemon.json
+  [ -f "$dir/sshd_config" ] && mkdir -p /etc/ssh && cp "$dir/sshd_config" /etc/ssh/sshd_config
+  [ -f "$dir/jail.local" ] && mkdir -p /etc/fail2ban && cp "$dir/jail.local" /etc/fail2ban/jail.local
+  [ -f "$dir/rules.v4" ] && mkdir -p /etc/iptables && cp "$dir/rules.v4" /etc/iptables/rules.v4
+  [ -f "$dir/rules.v6" ] && mkdir -p /etc/iptables && cp "$dir/rules.v6" /etc/iptables/rules.v6
+  [ -f "$dir/ufw_user.rules" ] && mkdir -p /etc/ufw && cp "$dir/ufw_user.rules" /etc/ufw/user.rules
+  [ -f "$dir/ufw_user6.rules" ] && mkdir -p /etc/ufw && cp "$dir/ufw_user6.rules" /etc/ufw/user6.rules
+  [ -f "$dir/20auto-upgrades" ] && mkdir -p /etc/apt/apt.conf.d && cp "$dir/20auto-upgrades" /etc/apt/apt.conf.d/20auto-upgrades
+  [ -f "$dir/daemon.json" ] && mkdir -p /etc/docker && cp "$dir/daemon.json" /etc/docker/daemon.json
+  if [ -f "$dir/docker_http_proxy.conf" ]; then
+    mkdir -p /etc/systemd/system/docker.service.d
+    cp "$dir/docker_http_proxy.conf" /etc/systemd/system/docker.service.d/http-proxy.conf
+  fi
+  if [ -f "$dir/ssh_socket_override.conf" ]; then
+    mkdir -p /etc/systemd/system/ssh.socket.d
+    cp "$dir/ssh_socket_override.conf" /etc/systemd/system/ssh.socket.d/override.conf
+  elif [ -f "$dir/ssh_socket_override.absent" ]; then
+    rm -f /etc/systemd/system/ssh.socket.d/override.conf
+  fi
+  [ -f "$dir/fstab" ] && cp "$dir/fstab" /etc/fstab
   [ -f "$dir/state.env" ] && cp "$dir/state.env" "$STATE_FILE"
 
+  run_cmd 'systemctl daemon-reload 2>/dev/null || true'
   run_cmd 'systemctl restart sshd 2>/dev/null || systemctl restart ssh || true'
+  run_cmd 'systemctl restart ssh.socket 2>/dev/null || true'
   run_cmd 'systemctl restart fail2ban 2>/dev/null || true'
   run_cmd 'systemctl restart docker 2>/dev/null || true'
   run_cmd 'netfilter-persistent reload 2>/dev/null || true'

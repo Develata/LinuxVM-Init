@@ -16,7 +16,7 @@ user_add() {
   if id -u "$new_user" >/dev/null 2>&1; then
     say '用户已存在，跳过创建。' 'User already exists, skipping.'
   else
-    run_cmd "adduser --disabled-password --gecos '' -- \"$new_user\"" || return 1
+    run_argv adduser --disabled-password --gecos '' -- "$new_user" || return 1
     if [ "$NON_INTERACTIVE" = '1' ]; then
       say '非交互模式下无法设置用户密码，请手动执行：passwd 用户名' 'Cannot set password in non-interactive mode. Run manually: passwd <username>'
       return 1
@@ -28,7 +28,7 @@ user_add() {
     fi
   fi
   if confirm '是否加入 sudo 组？[y/N]' 'Add user to sudo group? [y/N]'; then
-    run_cmd "adduser -- \"$new_user\" sudo"
+    run_argv adduser -- "$new_user" sudo
     say '已加入 sudo 组。后续可用该用户执行 sudo 命令。' 'Added to sudo group. This user can run sudo commands.'
   fi
 }

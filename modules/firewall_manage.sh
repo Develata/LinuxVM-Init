@@ -30,7 +30,7 @@ ufw_manage_menu() {
         if ! is_valid_port "$port"; then
           say '端口无效。' 'Invalid port.'
         else
-          run_cmd "ufw allow '${port}'"
+          run_argv ufw allow "${port}/tcp"
         fi
         ;;
       3)
@@ -38,7 +38,7 @@ ufw_manage_menu() {
         if ! is_valid_port "$port"; then
           say '端口无效。' 'Invalid port.'
         else
-          run_cmd "ufw deny '${port}'"
+          run_argv ufw deny "${port}/tcp"
         fi
         ;;
       4)
@@ -47,7 +47,7 @@ ufw_manage_menu() {
         if ! [[ "$rule_no" =~ ^[0-9]+$ ]]; then
           say '编号无效。' 'Invalid number.'
         else
-          run_cmd "ufw --force delete '${rule_no}'"
+          run_argv ufw --force delete "$rule_no"
         fi
         ;;
       5) run_cmd 'ufw --force enable' ;;
@@ -61,11 +61,51 @@ ufw_manage_menu() {
 iptables_delete_port_rules() {
   local port="$1"
   local _tries=0
-  while iptables_has_rule "$port"; do
-    run_cmd "iptables -D INPUT -p tcp --dport $port -j ACCEPT"
+  while iptables_has_tcp_rule "$port"; do
+    run_argv iptables -D INPUT -p tcp --dport "$port" -j ACCEPT
     _tries=$((_tries + 1))
     [ "$_tries" -ge 50 ] && break
   done
+  _tries=0
+  while iptables -C INPUT -p udp --dport "$port" -j ACCEPT >/dev/null 2>&1; do
+    run_argv iptables -D INPUT -p udp --dport "$port" -j ACCEPT
+    _tries=$((_tries + 1))
+    [ "$_tries" -ge 50 ] && break
+  done
+  if is_installed ip6tables; then
+    _tries=0
+    while ip6tables_has_tcp_rule "$port"; do
+      run_argv ip6tables -D INPUT -p tcp --dport "$port" -j ACCEPT
+      _tries=$((_tries + 1))
+      [ "$_tries" -ge 50 ] && break
+    done
+    _tries=0
+    while ip6tables -C INPUT -p udp --dport "$port" -j ACCEPT >/dev/null 2>&1; do
+      run_argv ip6tables -D INPUT -p udp --dport "$port" -j ACCEPT
+      _tries=$((_tries + 1))
+      [ "$_tries" -ge 50 ] && break
+    done
+  fi
+}
+
+iptables_save_all() {
+  run_cmd 'iptables-save > /etc/iptables/rules.v4'
+  if is_installed ip6tables; then
+    run_cmd 'ip6tables-save > /etc/iptables/rules.v6'
+  fi
+  run_cmd 'netfilter-persistent save'
+}
+
+iptables_restore_backup() {
+  if [ ! -f /etc/iptables/rules.v4.bak ]; then
+    say '未找到备份文件 /etc/iptables/rules.v4.bak' 'Backup file /etc/iptables/rules.v4.bak not found'
+    return 1
+  fi
+  run_cmd 'iptables-restore < /etc/iptables/rules.v4.bak'
+  if [ -f /etc/iptables/rules.v6.bak ] && is_installed ip6tables; then
+    run_cmd 'ip6tables-restore < /etc/iptables/rules.v6.bak'
+  fi
+  iptables_save_all
 }
 
 iptables_manage_menu() {
@@ -96,7 +136,7 @@ iptables_manage_menu() {
           say '端口无效。' 'Invalid port.'
         else
           iptables_allow_port "$port"
-          run_cmd 'netfilter-persistent save'
+          iptables_save_all
         fi
         ;;
       3)
@@ -105,21 +145,14 @@ iptables_manage_menu() {
           say '端口无效。' 'Invalid port.'
         else
           iptables_delete_port_rules "$port"
-          run_cmd 'netfilter-persistent save'
+          iptables_save_all
         fi
         ;;
       4)
-        run_cmd 'iptables-save > /etc/iptables/rules.v4'
-        run_cmd 'netfilter-persistent save'
+        iptables_save_all
         ;;
       5)
-        if [ ! -f /etc/iptables/rules.v4.bak ]; then
-          say '未找到备份文件 /etc/iptables/rules.v4.bak' 'Backup file /etc/iptables/rules.v4.bak not found'
-        else
-          run_cmd 'iptables-restore < /etc/iptables/rules.v4.bak'
-          run_cmd 'iptables-save > /etc/iptables/rules.v4'
-          run_cmd 'netfilter-persistent save'
-        fi
+        iptables_restore_backup
         ;;
       b|B) return 0 ;;
       *) say '输入无效。' 'Invalid input.' ;;

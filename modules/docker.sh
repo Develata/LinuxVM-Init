@@ -94,7 +94,7 @@ docker_unset_proxy() {
   if ! confirm '确认清除 Docker 代理？[y/N]' 'Remove Docker proxy settings? [y/N]'; then
     return 2
   fi
-  run_cmd 'rm -f /etc/systemd/system/docker.service.d/http-proxy.conf'
+  run_argv rm -f /etc/systemd/system/docker.service.d/http-proxy.conf
   run_cmd 'systemctl daemon-reload'
   run_cmd 'systemctl restart docker'
   say 'Docker 代理已清除。' 'Docker proxy configuration removed.'
@@ -122,13 +122,13 @@ docker_install() {
     return 2
   fi
 
-  run_cmd 'curl -fsSL https://get.docker.com | sh'
+  download_and_run_script 'Docker' 'https://get.docker.com' sh || return $?
   docker_install_compose
 
   if [ -n "${SUDO_USER:-}" ]; then
     say '风险提示：加入 docker 组相当于授予接近 root 的权限。' 'Warning: docker group is near-root access.'
     if confirm "是否将 ${SUDO_USER} 加入 docker 组？[y/N]" "Add ${SUDO_USER} to docker group? [y/N]"; then
-      run_cmd "gpasswd -a ${SUDO_USER} docker"
+      run_argv gpasswd -a "$SUDO_USER" docker
     fi
   fi
 

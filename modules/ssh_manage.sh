@@ -25,7 +25,10 @@ ssh_set_root_login() {
   printf '%s ' '> '
   read -r op
   case "$op" in
-    1) value='no' ;;
+    1)
+      ensure_root_disable_safe || return 1
+      value='no'
+      ;;
     2) value='yes' ;;
     *)
       say '输入无效。' 'Invalid input.'
@@ -48,7 +51,10 @@ ssh_set_password_auth() {
   printf '%s ' '> '
   read -r op
   case "$op" in
-    1) value='no' ;;
+    1)
+      ensure_password_disable_safe || return 1
+      value='no'
+      ;;
     2) value='yes' ;;
     *)
       say '输入无效。' 'Invalid input.'
