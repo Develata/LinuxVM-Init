@@ -227,16 +227,48 @@ nftables_setup_icmp_mode() {
   fi
 }
 
+nftables_render_tcp_accept_rule() {
+  local stack="$1"
+  local port="$2"
+  local comment="$3"
+  case "$(network_stack_normalize "$stack")" in
+    ipv4) printf '    meta nfproto ipv4 tcp dport %s accept comment "%s"\n' "$port" "$comment" ;;
+    ipv6) printf '    meta nfproto ipv6 tcp dport %s accept comment "%s"\n' "$port" "$comment" ;;
+    *) printf '    tcp dport %s accept comment "%s"\n' "$port" "$comment" ;;
+  esac
+}
+
+nftables_render_udp_accept_rule() {
+  local stack="$1"
+  local port="$2"
+  local comment="$3"
+  case "$(network_stack_normalize "$stack")" in
+    ipv4) printf '    meta nfproto ipv4 udp dport %s accept comment "%s"\n' "$port" "$comment" ;;
+    ipv6) printf '    meta nfproto ipv6 udp dport %s accept comment "%s"\n' "$port" "$comment" ;;
+    *) printf '    udp dport %s accept comment "%s"\n' "$port" "$comment" ;;
+  esac
+}
+
 nftables_render_icmp_rules() {
-  local mode
+  local mode stack
   mode="$(nftables_icmp_mode_normalize "$1")"
+  stack="$(network_stack_normalize "${2:-unknown}")"
   case "$mode" in
     essential)
-      printf '    meta l4proto icmp icmp type { echo-request, destination-unreachable, time-exceeded, parameter-problem } accept comment "linuxvm-init:icmp-essential-v4"\n'
-      printf '    meta l4proto icmpv6 icmpv6 type { echo-request, destination-unreachable, packet-too-big, time-exceeded, parameter-problem, nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } accept comment "linuxvm-init:icmp-essential-v6"\n'
+      if network_stack_supports_ipv4 "$stack"; then
+        printf '    meta l4proto icmp icmp type { echo-request, destination-unreachable, time-exceeded, parameter-problem } accept comment "linuxvm-init:icmp-essential-v4"\n'
+      fi
+      if network_stack_supports_ipv6 "$stack"; then
+        printf '    meta l4proto icmpv6 icmpv6 type { echo-request, destination-unreachable, packet-too-big, time-exceeded, parameter-problem, nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } accept comment "linuxvm-init:icmp-essential-v6"\n'
+      fi
       ;;
     all)
-      printf '    meta l4proto { icmp, icmpv6 } accept comment "linuxvm-init:icmp-all"\n'
+      if network_stack_supports_ipv4 "$stack"; then
+        printf '    meta l4proto icmp accept comment "linuxvm-init:icmp-all-v4"\n'
+      fi
+      if network_stack_supports_ipv6 "$stack"; then
+        printf '    meta l4proto icmpv6 accept comment "linuxvm-init:icmp-all-v6"\n'
+      fi
       ;;
   esac
 }
@@ -309,7 +341,10 @@ nftables_render_ruleset() {
   local allowed_udp_ports="${5:-}"
   local icmp_mode="${6:-off}"
   local forward_mode="${7:-docker}"
+  local network_stack="${8:-unknown}"
   local port
+
+  network_stack="$(network_stack_normalize "$network_stack")"
 
   if ! is_valid_port "$ssh_port"; then
     say 'SSH 端口无效，拒绝生成 nftables 规则。' 'Invalid SSH port, refusing to generate nftables rules.'
@@ -326,24 +361,24 @@ nftables_render_ruleset() {
     printf '    iifname "lo" accept comment "linuxvm-init:loopback"\n'
     printf '    ct state established,related accept comment "linuxvm-init:established"\n'
     if [ -n "$source_ip" ] && is_valid_ip "$source_ip"; then
-      if is_valid_ipv4 "$source_ip"; then
+      if is_valid_ipv4 "$source_ip" && network_stack_supports_ipv4 "$network_stack"; then
         printf '    ip saddr %s tcp dport %s accept comment "linuxvm-init:ssh-source"\n' "$source_ip" "$ssh_port"
-      else
+      elif is_valid_ipv6 "$source_ip" && network_stack_supports_ipv6 "$network_stack"; then
         printf '    ip6 saddr %s tcp dport %s accept comment "linuxvm-init:ssh-source"\n' "$source_ip" "$ssh_port"
       fi
     fi
-    printf '    tcp dport %s accept comment "linuxvm-init:ssh"\n' "$ssh_port"
+    nftables_render_tcp_accept_rule "$network_stack" "$ssh_port" 'linuxvm-init:ssh'
     for port in $(printf '%s' "$allowed_tcp_ports" | tr ',' ' '); do
       if is_valid_port "$port" && [ "$port" != "$ssh_port" ]; then
-        printf '    tcp dport %s accept comment "linuxvm-init:tcp-%s"\n' "$port" "$port"
+        nftables_render_tcp_accept_rule "$network_stack" "$port" "linuxvm-init:tcp-${port}"
       fi
     done
     for port in $(printf '%s' "$allowed_udp_ports" | tr ',' ' '); do
       if is_valid_port "$port"; then
-        printf '    udp dport %s accept comment "linuxvm-init:udp-%s"\n' "$port" "$port"
+        nftables_render_udp_accept_rule "$network_stack" "$port" "linuxvm-init:udp-${port}"
       fi
     done
-    nftables_render_icmp_rules "$icmp_mode"
+    nftables_render_icmp_rules "$icmp_mode" "$network_stack"
     printf '  }\n'
     printf '\n'
     printf '  chain forward {\n'
@@ -463,10 +498,11 @@ nftables_write_and_apply() {
   local allowed_udp_ports="${4:-}"
   local icmp_mode="${5:-off}"
   local forward_mode="${6:-docker}"
+  local network_stack="${7:-unknown}"
   local tmp_file rc
 
   tmp_file="$(mktemp /tmp/linuxvm-init-nftables.XXXXXX)" || return 1
-  nftables_render_ruleset "$tmp_file" "$ssh_port" "$source_ip" "$allowed_tcp_ports" "$allowed_udp_ports" "$icmp_mode" "$forward_mode" || {
+  nftables_render_ruleset "$tmp_file" "$ssh_port" "$source_ip" "$allowed_tcp_ports" "$allowed_udp_ports" "$icmp_mode" "$forward_mode" "$network_stack" || {
     rm -f "$tmp_file"
     return 1
   }
@@ -490,8 +526,9 @@ nftables_current_ssh_port() {
 }
 
 nftables_apply_current_state() {
-  local ssh_port source_ip tcp_ports udp_ports icmp_mode forward_mode
+  local ssh_port source_ip tcp_ports udp_ports icmp_mode forward_mode network_stack
   nftables_install || return 1
+  network_stack="$(network_stack_refresh)"
   ssh_port="$(nftables_current_ssh_port)"
   if ! is_valid_port "$ssh_port"; then
     say '检测 SSH 端口失败，拒绝应用 nftables。' 'Failed to detect SSH port, refusing to apply nftables.'
@@ -504,7 +541,7 @@ nftables_apply_current_state() {
   forward_mode="$(nftables_forward_mode)"
   state_set 'FIREWALL_ICMP_MODE' "$icmp_mode"
   state_set 'FIREWALL_FORWARD_MODE' "$forward_mode"
-  nftables_write_and_apply "$ssh_port" "$source_ip" "$tcp_ports" "$udp_ports" "$icmp_mode" "$forward_mode"
+  nftables_write_and_apply "$ssh_port" "$source_ip" "$tcp_ports" "$udp_ports" "$icmp_mode" "$forward_mode" "$network_stack"
 }
 
 nftables_allow_tcp_port() {
@@ -727,10 +764,13 @@ nftables_setup() {
   local setup_tcp_ports
   local source_ip
   local iptables_frontend
+  local network_stack
   say '风险提示：启用防火墙但未放行 SSH 端口会断开连接。' 'Warning: enabling firewall without SSH port will cut off access.'
   say '风险提示：nftables 将设置 INPUT/FORWARD 默认策略为 DROP。' 'Warning: nftables will set INPUT/FORWARD default policy to DROP.'
 
   nftables_install || return 1
+  network_stack="$(network_stack_refresh)"
+  say "检测到网络栈：${network_stack}（unknown 会按 dual 保守处理）" "Detected network stack: ${network_stack} (unknown is handled conservatively as dual)"
   iptables_frontend="$(nftables_refresh_iptables_frontend_state)"
   case "$iptables_frontend" in
     nft)

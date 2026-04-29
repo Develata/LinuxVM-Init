@@ -14,6 +14,7 @@ novice_safe_repair() {
   src_ip="$(detect_source_ip)"
 
   nftables_install || return 1
+  network_stack_refresh >/dev/null
   if nftables_legacy_firewall_detected; then
     nftables_backup_legacy_firewalls
     nftables_disable_legacy_firewalls

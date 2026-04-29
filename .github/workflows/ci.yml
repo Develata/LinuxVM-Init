@@ -35,7 +35,15 @@ jobs:
       - name: Validate generated nftables ruleset
         run: |
           tmp_file="$(mktemp)"
-          bash -lc 'source ./lib/common.sh; source ./modules/ssh_common.sh; source ./modules/firewall.sh; nftables_render_ruleset "$1" 34521 "2001:db8::1" "80,443" "53" "essential" "docker"; nft -c -f "$1"' _ "$tmp_file"
+          bash -lc 'source ./lib/common.sh; source ./modules/network_stack.sh; source ./modules/ssh_common.sh; source ./modules/firewall.sh; nftables_render_ruleset "$1" 34521 "2001:db8::1" "80,443" "53" "essential" "docker" "dual"' _ "$tmp_file"
+          nft_output="$(nft -c -f "$tmp_file" 2>&1)" || {
+            if printf '%s\n' "$nft_output" | grep -Eq 'Operation not permitted|cache initialization failed'; then
+              printf '%s\n' "::warning::nftables syntax check skipped: nft lacks netlink permission"
+            else
+              printf '%s\n' "$nft_output"
+              exit 1
+            fi
+          }
           rm -f "$tmp_file"
 
       - name: Run Debian container checks

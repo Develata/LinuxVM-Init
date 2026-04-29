@@ -19,11 +19,12 @@ nftables_show_state() {
   printf 'FIREWALL_ICMP_MODE=%s\n' "$icmp_mode"
   printf 'FIREWALL_FORWARD_MODE=%s\n' "$forward_mode"
   printf 'LAST_LEGACY_FIREWALL_BACKUP=%s\n' "${backup_dir:-none}"
+  network_stack_show_state
   nftables_show_compat_state
 }
 
 firewall_manage() {
-  local current_mode op port protocol backup_dir
+  local current_mode op port protocol backup_dir refreshed_stack
   current_mode="$(state_get 'FIREWALL_MODE')"
   if [ -n "$current_mode" ]; then
     say "当前记录模式：$current_mode" "Current recorded mode: $current_mode"
@@ -39,6 +40,7 @@ firewall_manage() {
       printf '%s\n' '4) 删除放行规则（tcp/udp/icmp）'
       printf '%s\n' '5) 重载当前 nftables 配置'
       printf '%s\n' '6) 查看最近旧防火墙备份目录'
+      printf '%s\n' '7) 刷新网络栈检测'
       printf '%s\n' 'b) 返回'
     else
       printf '%s\n' '0) Initial firewall setup'
@@ -48,6 +50,7 @@ firewall_manage() {
       printf '%s\n' '4) Remove allow rule (tcp/udp/icmp)'
       printf '%s\n' '5) Reload current nftables config'
       printf '%s\n' '6) Show latest legacy firewall backup directory'
+      printf '%s\n' '7) Refresh network stack detection'
       printf '%s\n' 'b) Back'
     fi
     printf '%s ' '> '
@@ -123,6 +126,10 @@ firewall_manage() {
         else
           say '尚无旧防火墙备份记录。' 'No legacy firewall backup has been recorded.'
         fi
+        ;;
+      7)
+        refreshed_stack="$(network_stack_refresh)"
+        say "已刷新网络栈：${refreshed_stack}" "Network stack refreshed: ${refreshed_stack}"
         ;;
       b|B)
         return 0

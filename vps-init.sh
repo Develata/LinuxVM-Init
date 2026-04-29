@@ -13,6 +13,7 @@ source "$BASE_DIR/lib/common.sh"
 source "$BASE_DIR/modules/system.sh"
 source "$BASE_DIR/modules/tools.sh"
 source "$BASE_DIR/modules/users.sh"
+source "$BASE_DIR/modules/network_stack.sh"
 source "$BASE_DIR/modules/ssh_common.sh"
 source "$BASE_DIR/modules/protocol_ssh.sh"
 source "$BASE_DIR/modules/protocol_http.sh"
@@ -80,6 +81,7 @@ fi
 
 check_distro_consistency
 persist_preferences
+network_stack_refresh >/dev/null
 if [ "$NON_INTERACTIVE" = '1' ]; then
   run_non_interactive_profile
 else

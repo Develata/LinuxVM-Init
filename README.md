@@ -88,6 +88,7 @@ sudo bash vps-init.sh --non-interactive --distro ubuntu24
 - SSH 相关高风险操作默认跳过，需手动确认后才执行。
 - 选择密钥登录后，会强制关闭密码登录。
 - 防火墙统一使用 `nftables`，通过 `inet` 表同时管理 IPv4/IPv6。
+- 脚本会检测并持久化当前网络栈（IPv4 / IPv6 / dual / unknown），防火墙规则按实际栈生成；检测失败时按双栈保守处理。
 - `iptables-nft` 会被识别为 nftables 兼容层，无需禁用；脚本不会自动切换 `update-alternatives`，也不会通过 iptables 写规则。
 - 若脚本管理表之外仍存在 iptables-nft/nftables 规则，管理面板会提示；其他 base chain 的 DROP 规则仍可能影响已放行端口。
 - 防火墙放行规则按协议分别管理：TCP/UDP 需要端口，ICMP 默认仅放行诊断、PMTU 与 IPv6 邻居发现所需类型。

@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 show_main_dashboard() {
-  local fw_mode last_snapshot ssh_port f2b_state
+  local fw_mode last_snapshot ssh_port f2b_state network_stack
   ensure_version_info
   fw_mode="$(state_get 'FIREWALL_MODE')"
   last_snapshot="$(state_get 'LAST_SNAPSHOT')"
   ssh_port="$(current_ssh_port)"
   f2b_state="$(systemctl is-active fail2ban 2>/dev/null || printf 'unknown')"
+  network_stack="$(network_stack_current)"
   [ -z "$fw_mode" ] && fw_mode='unknown'
   [ -z "$last_snapshot" ] && last_snapshot='none'
   say '维护者: Develata | 仓库: https://github.com/Develata/LinuxVM-Init' 'Maintainer: Develata | Repo: https://github.com/Develata/LinuxVM-Init'
   say "版本: 当前=${CURRENT_VERSION} 最新=${LATEST_VERSION}" "Version: current=${CURRENT_VERSION} latest=${LATEST_VERSION}"
-  say "状态: 系统=$DISTRO_ID SSH=$ssh_port 防火墙=$fw_mode fail2ban=$f2b_state 快照=$last_snapshot" "Status: distro=$DISTRO_ID SSH=$ssh_port firewall=$fw_mode fail2ban=$f2b_state snapshot=$last_snapshot"
+  say "状态: 系统=$DISTRO_ID 网络=$network_stack SSH=$ssh_port 防火墙=$fw_mode fail2ban=$f2b_state 快照=$last_snapshot" "Status: distro=$DISTRO_ID network=$network_stack SSH=$ssh_port firewall=$fw_mode fail2ban=$f2b_state snapshot=$last_snapshot"
 }
 
 init_flow() {
