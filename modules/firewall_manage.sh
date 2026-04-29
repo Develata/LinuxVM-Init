@@ -19,6 +19,7 @@ nftables_show_state() {
   printf 'FIREWALL_ICMP_MODE=%s\n' "$icmp_mode"
   printf 'FIREWALL_FORWARD_MODE=%s\n' "$forward_mode"
   printf 'LAST_LEGACY_FIREWALL_BACKUP=%s\n' "${backup_dir:-none}"
+  nftables_show_compat_state
 }
 
 firewall_manage() {

@@ -93,6 +93,124 @@ nftables_forward_mode() {
   nftables_forward_mode_normalize "$(state_get 'FIREWALL_FORWARD_MODE')"
 }
 
+nftables_detect_iptables_command_frontend() {
+  local cmd="$1"
+  local version
+  if ! is_installed "$cmd"; then
+    printf '%s\n' 'missing'
+    return
+  fi
+
+  version="$("$cmd" --version 2>/dev/null || true)"
+  case "$version" in
+    *nf_tables*) printf '%s\n' 'nft' ;;
+    *legacy*) printf '%s\n' 'legacy' ;;
+    *) printf '%s\n' 'unknown' ;;
+  esac
+}
+
+nftables_detect_iptables_frontend() {
+  local ipv4 ipv6
+  ipv4="$(nftables_detect_iptables_command_frontend iptables)"
+  ipv6="$(nftables_detect_iptables_command_frontend ip6tables)"
+
+  if [ "$ipv4" = 'missing' ] && [ "$ipv6" = 'missing' ]; then
+    printf '%s\n' 'missing'
+  elif [ "$ipv4" = "$ipv6" ]; then
+    printf '%s\n' "$ipv4"
+  elif [ "$ipv4" = 'missing' ]; then
+    printf '%s\n' "$ipv6"
+  elif [ "$ipv6" = 'missing' ]; then
+    printf '%s\n' "$ipv4"
+  else
+    printf '%s\n' 'mixed'
+  fi
+}
+
+nftables_refresh_iptables_frontend_state() {
+  local frontend
+  frontend="$(nftables_detect_iptables_frontend)"
+  state_set 'FIREWALL_IPTABLES_FRONTEND' "$frontend"
+  printf '%s\n' "$frontend"
+}
+
+nftables_iptables_save_has_rules() {
+  local cmd="$1"
+  if ! is_installed "$cmd"; then
+    return 1
+  fi
+
+  "$cmd" 2>/dev/null | awk '
+    /^-[AINR]/ { found = 1 }
+    /^:(INPUT|FORWARD|OUTPUT)[[:space:]]/ && $2 != "ACCEPT" { found = 1 }
+    END { exit(found ? 0 : 1) }
+  '
+}
+
+nftables_persistent_iptables_files_exist() {
+  [ -f /etc/iptables/rules.v4 ] || [ -f /etc/iptables/rules.v6 ]
+}
+
+nftables_iptables_legacy_risk_detected() {
+  local frontend
+  frontend="$(nftables_detect_iptables_frontend)"
+  [ "$frontend" = 'legacy' ] || [ "$frontend" = 'mixed' ]
+}
+
+nftables_iptables_saved_rules_detected() {
+  nftables_persistent_iptables_files_exist \
+    || nftables_iptables_save_has_rules iptables-save \
+    || nftables_iptables_save_has_rules ip6tables-save
+}
+
+nftables_external_ruleset_detected() {
+  if ! is_installed nft; then
+    return 1
+  fi
+
+  nft list ruleset 2>/dev/null | awk -v family="$NFTABLES_FAMILY" -v table="$NFTABLES_TABLE" '
+    $1 == "table" && !($2 == family && $3 == table) { found = 1 }
+    END { exit(found ? 0 : 1) }
+  '
+}
+
+nftables_warn_external_rules() {
+  if nftables_iptables_saved_rules_detected || nftables_external_ruleset_detected; then
+    say '风险提示：检测到脚本管理表之外的 iptables-nft/nftables 规则。iptables-nft 与 nftables 兼容，但其他 base chain 的 DROP 仍可能拦截已在 linuxvm_init 中放行的流量，请用 nft list ruleset 复查。' 'Warning: iptables-nft/nftables rules outside the managed table were detected. iptables-nft is compatible with nftables, but DROP rules in other base chains can still block traffic allowed by linuxvm_init; review nft list ruleset.'
+  fi
+}
+
+nftables_show_compat_state() {
+  local frontend legacy_risk persistent_rules saved_rules external_rules
+  frontend="$(nftables_refresh_iptables_frontend_state)"
+  legacy_risk='no'
+  persistent_rules='no'
+  saved_rules='no'
+  external_rules='no'
+
+  if nftables_iptables_legacy_risk_detected; then
+    legacy_risk='yes'
+  fi
+  if nftables_persistent_iptables_files_exist; then
+    persistent_rules='yes'
+  fi
+  if nftables_iptables_saved_rules_detected; then
+    saved_rules='yes'
+  fi
+  if nftables_external_ruleset_detected; then
+    external_rules='yes'
+  fi
+
+  printf 'FIREWALL_IPTABLES_FRONTEND=%s\n' "$frontend"
+  printf 'IPTABLES_LEGACY_RISK=%s\n' "$legacy_risk"
+  printf 'IPTABLES_PERSISTENT_RULE_FILES=%s\n' "$persistent_rules"
+  printf 'IPTABLES_SAVED_RULES_DETECTED=%s\n' "$saved_rules"
+  printf 'EXTERNAL_NFT_TABLES_DETECTED=%s\n' "$external_rules"
+  if [ "$frontend" = 'nft' ]; then
+    say 'iptables-nft 兼容 nftables，无需禁用；IPv6/双栈规则仍由 nftables 原生 inet 表覆盖。' 'iptables-nft is compatible with nftables and does not need to be disabled; IPv6/dual-stack rules remain covered by the native nftables inet table.'
+  fi
+}
+
 nftables_setup_icmp_mode() {
   local mode legacy
   mode="$(state_get 'FIREWALL_ICMP_MODE')"
@@ -118,7 +236,7 @@ nftables_render_icmp_rules() {
       printf '    meta l4proto icmpv6 icmpv6 type { echo-request, destination-unreachable, packet-too-big, time-exceeded, parameter-problem, nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } accept comment "linuxvm-init:icmp-essential-v6"\n'
       ;;
     all)
-      printf '    meta l4proto { icmp, ipv6-icmp } accept comment "linuxvm-init:icmp-all"\n'
+      printf '    meta l4proto { icmp, icmpv6 } accept comment "linuxvm-init:icmp-all"\n'
       ;;
   esac
 }
@@ -333,6 +451,7 @@ nftables_apply_ruleset_file() {
 
   state_set 'FIREWALL_MODE' 'nftables'
   state_set 'FIREWALL_SSH_PORT' "$ssh_port"
+  nftables_warn_external_rules
   say "nftables 已应用，并已放行 SSH 端口 ${ssh_port}。" "nftables applied and SSH port ${ssh_port} is allowed."
   rm -f "$previous_table" "$previous_conf"
 }
@@ -531,12 +650,18 @@ nftables_legacy_firewall_detected() {
   if is_installed ufw && ufw status 2>/dev/null | grep -q 'Status: active'; then
     return 0
   fi
-  if [ -f /etc/iptables/rules.v4 ] || [ -f /etc/iptables/rules.v6 ]; then
+  if nftables_iptables_legacy_risk_detected; then
+    return 0
+  fi
+  if nftables_iptables_saved_rules_detected; then
     return 0
   fi
   if is_installed nft \
     && ! nft list table "$NFTABLES_FAMILY" "$NFTABLES_TABLE" >/dev/null 2>&1 \
     && nft list ruleset 2>/dev/null | grep -q '^table '; then
+    return 0
+  fi
+  if nftables_external_ruleset_detected; then
     return 0
   fi
   if systemctl is-enabled netfilter-persistent >/dev/null 2>&1; then
@@ -552,6 +677,19 @@ nftables_backup_legacy_firewalls() {
   dir="$NFTABLES_LEGACY_BACKUP_ROOT/$ts"
   mkdir -p "$dir"
 
+  nftables_detect_iptables_frontend >"$dir/iptables_frontend.txt" 2>&1 || true
+  if is_installed iptables; then
+    iptables --version >"$dir/iptables_version.txt" 2>&1 || true
+    iptables -S >"$dir/iptables-S.v4" 2>"$dir/iptables-S.v4.err" || true
+  fi
+  if is_installed ip6tables; then
+    ip6tables --version >"$dir/ip6tables_version.txt" 2>&1 || true
+    ip6tables -S >"$dir/ip6tables-S.v6" 2>"$dir/ip6tables-S.v6.err" || true
+  fi
+  if is_installed update-alternatives; then
+    update-alternatives --display iptables >"$dir/update-alternatives-iptables.txt" 2>&1 || true
+    update-alternatives --display ip6tables >"$dir/update-alternatives-ip6tables.txt" 2>&1 || true
+  fi
   if is_installed ufw; then
     ufw status verbose >"$dir/ufw_status_verbose.txt" 2>&1 || true
     ufw status numbered >"$dir/ufw_status_numbered.txt" 2>&1 || true
@@ -572,6 +710,7 @@ nftables_backup_legacy_firewalls() {
   [ -f "$STATE_FILE" ] && cp "$STATE_FILE" "$dir/state.env"
 
   printf 'time=%s\n' "$ts" >"$dir/meta"
+  printf 'iptables_frontend=%s\n' "$(cat "$dir/iptables_frontend.txt" 2>/dev/null || printf '%s' 'missing')" >>"$dir/meta"
   state_set 'LAST_LEGACY_FIREWALL_BACKUP' "$dir"
   say "旧防火墙规则已保存：$dir" "Legacy firewall rules saved: $dir"
 }
@@ -587,15 +726,25 @@ nftables_disable_legacy_firewalls() {
 nftables_setup() {
   local setup_tcp_ports
   local source_ip
+  local iptables_frontend
   say '风险提示：启用防火墙但未放行 SSH 端口会断开连接。' 'Warning: enabling firewall without SSH port will cut off access.'
   say '风险提示：nftables 将设置 INPUT/FORWARD 默认策略为 DROP。' 'Warning: nftables will set INPUT/FORWARD default policy to DROP.'
 
   nftables_install || return 1
+  iptables_frontend="$(nftables_refresh_iptables_frontend_state)"
+  case "$iptables_frontend" in
+    nft)
+      say '检测到 iptables-nft 兼容层：它与 nftables 共用内核规则集，本脚本将继续使用 nftables 原生规则覆盖 IPv4/IPv6。' 'Detected iptables-nft compatibility layer; it shares the nftables kernel ruleset, and this script will keep using native nftables rules for IPv4/IPv6.'
+      ;;
+    legacy|mixed)
+      say "检测到 iptables 前端状态：${iptables_frontend}。本脚本不会自动切换 alternatives；将以 nftables 原生规则为准。" "Detected iptables frontend: ${iptables_frontend}. This script will not change alternatives automatically; native nftables rules remain authoritative."
+      ;;
+  esac
   snapshot_create 'before-nftables-setup'
 
   if nftables_legacy_firewall_detected; then
-    say '检测到旧防火墙配置或服务。切换前会先保存旧规则，再禁用旧防火墙服务。' 'Legacy firewall config or services detected. Rules will be backed up before disabling legacy services.'
-    if ! confirm '确认备份旧规则并切换到 nftables？[y/N]' 'Back up legacy rules and switch to nftables? [y/N]'; then
+    say '检测到旧防火墙配置、iptables 兼容层规则或其他 nftables 规则。切换前会先保存现有规则；iptables-nft 兼容层不会被禁用。' 'Detected legacy firewall config, iptables compatibility rules, or other nftables rules. Existing rules will be backed up first; iptables-nft compatibility will not be disabled.'
+    if ! confirm '确认备份现有规则并应用 nftables？[y/N]' 'Back up existing rules and apply nftables? [y/N]'; then
       return 2
     fi
     nftables_backup_legacy_firewalls

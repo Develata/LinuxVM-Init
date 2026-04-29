@@ -88,10 +88,12 @@ sudo bash vps-init.sh --non-interactive --distro ubuntu24
 - SSH 相关高风险操作默认跳过，需手动确认后才执行。
 - 选择密钥登录后，会强制关闭密码登录。
 - 防火墙统一使用 `nftables`，通过 `inet` 表同时管理 IPv4/IPv6。
+- `iptables-nft` 会被识别为 nftables 兼容层，无需禁用；脚本不会自动切换 `update-alternatives`，也不会通过 iptables 写规则。
+- 若脚本管理表之外仍存在 iptables-nft/nftables 规则，管理面板会提示；其他 base chain 的 DROP 规则仍可能影响已放行端口。
 - 防火墙放行规则按协议分别管理：TCP/UDP 需要端口，ICMP 默认仅放行诊断、PMTU 与 IPv6 邻居发现所需类型。
 - FORWARD 链默认 DROP，但会保留 Docker bridge 常见流量兼容规则，避免破坏容器网络。
 - 防火墙模式会持久化记录在 `/etc/linuxvm-init/state.env`。
-- 检测到旧 `ufw` / `iptables-persistent` 配置时，会先保存旧规则到 `/etc/linuxvm-init/legacy-firewall-backups/`，确认后再禁用旧防火墙服务并切换到 nftables。
+- 检测到旧 `ufw` / `iptables-legacy` / `iptables-persistent` 配置或其他 nftables 规则时，会先保存现有规则到 `/etc/linuxvm-init/legacy-firewall-backups/`，确认后再应用脚本管理的 nftables 表。
 - 防火墙与 fail2ban 变更时会优先保护当前来源 IP（可检测时）。
 - 当检测到主机内存小于 1G 时，默认跳过 Docker 安装。
 - 若内存小于 1G，仍可在主菜单 `2) Docker 管理面板` 中手动确认“强制安装”。
