@@ -21,6 +21,8 @@ novice_safe_repair() {
   state_set 'FIREWALL_MODE' 'nftables'
   state_set 'FIREWALL_SSH_PORT' "$FIREWALL_SSH_PORT"
   state_set 'FIREWALL_SSH_SOURCE_IP' "$src_ip"
+  state_set 'FIREWALL_ICMP_MODE' "$(nftables_setup_icmp_mode)"
+  state_set 'FIREWALL_FORWARD_MODE' 'docker'
   nftables_apply_current_state || return 1
 
   backup_file '/etc/ssh/sshd_config'

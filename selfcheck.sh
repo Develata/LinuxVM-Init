@@ -87,6 +87,36 @@ else
   fail 'failed to source one or more modules'
 fi
 
+check_nftables_ruleset_generation() {
+  local tmp_file
+  tmp_file="$(mktemp /tmp/linuxvm-init-selfcheck-nftables.XXXXXX)" || {
+    fail 'failed to create nftables selfcheck temp file'
+    return
+  }
+
+  if nftables_render_ruleset "$tmp_file" 34521 '2001:db8::1' '80,443' '53' 'essential' 'docker'; then
+    ok 'nftables ruleset renders successfully'
+  else
+    fail 'nftables ruleset render failed'
+    rm -f "$tmp_file"
+    return
+  fi
+
+  if command -v nft >/dev/null 2>&1; then
+    if nft -c -f "$tmp_file"; then
+      ok 'nftables ruleset syntax check passed'
+    else
+      fail 'nftables ruleset syntax check failed'
+    fi
+  else
+    warn 'command missing: nft'
+  fi
+
+  rm -f "$tmp_file"
+}
+
+check_nftables_ruleset_generation
+
 required_functions='main_menu init_flow ssh_manage docker_manage firewall_manage nftables_setup fail2ban_manage novice_safe_repair snapshot_create monitor_manage script_update'
 for fn in $required_functions; do
   if declare -F "$fn" >/dev/null 2>&1; then

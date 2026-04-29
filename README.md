@@ -88,7 +88,8 @@ sudo bash vps-init.sh --non-interactive --distro ubuntu24
 - SSH 相关高风险操作默认跳过，需手动确认后才执行。
 - 选择密钥登录后，会强制关闭密码登录。
 - 防火墙统一使用 `nftables`，通过 `inet` 表同时管理 IPv4/IPv6。
-- 防火墙放行规则按协议分别管理：TCP/UDP 需要端口，ICMP 不使用端口。
+- 防火墙放行规则按协议分别管理：TCP/UDP 需要端口，ICMP 默认仅放行诊断、PMTU 与 IPv6 邻居发现所需类型。
+- FORWARD 链默认 DROP，但会保留 Docker bridge 常见流量兼容规则，避免破坏容器网络。
 - 防火墙模式会持久化记录在 `/etc/linuxvm-init/state.env`。
 - 检测到旧 `ufw` / `iptables-persistent` 配置时，会先保存旧规则到 `/etc/linuxvm-init/legacy-firewall-backups/`，确认后再禁用旧防火墙服务并切换到 nftables。
 - 防火墙与 fail2ban 变更时会优先保护当前来源 IP（可检测时）。
@@ -101,7 +102,7 @@ sudo bash vps-init.sh --non-interactive --distro ubuntu24
 - 主菜单 `0) Init 一键顺序配置`：按推荐顺序执行初始化。
 - 主菜单 `1) SSH 管理面板`：SSH 相关操作全部集中管理。
 - 主菜单 `2) Docker 管理面板`：Docker 安装、Compose、代理、日志限制统一管理。
-- 主菜单 `3) 防火墙管理面板`：nftables 规则查看、TCP/UDP/ICMP 放行与删除、配置重载。
+- 主菜单 `3) 防火墙管理面板`：nftables 状态与规则查看、TCP/UDP/ICMP 放行与删除、配置重载。
 - 主菜单 `4) fail2ban 管理面板`：支持安装/初始化、策略调整、封禁与解封 IP。
 - 主菜单 `5) 系统维护`：系统更新、工具、用户、自动更新管理、logrotate、1panel。
 - 主菜单 `6) Swap 管理`：查看/重配/删除 swap。

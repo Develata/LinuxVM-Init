@@ -51,7 +51,88 @@ nftables_allowed_udp_ports() {
 }
 
 nftables_icmp_allowed() {
-  [ "$(state_get 'FIREWALL_ALLOW_ICMP')" = '1' ]
+  [ "$(nftables_icmp_mode)" != 'off' ]
+}
+
+nftables_icmp_mode_normalize() {
+  local mode="${1:-}"
+  case "$mode" in
+    1|essential) printf '%s\n' 'essential' ;;
+    all) printf '%s\n' 'all' ;;
+    0|off|'') printf '%s\n' 'off' ;;
+    *) printf '%s\n' 'off' ;;
+  esac
+}
+
+nftables_icmp_mode() {
+  local mode legacy
+  mode="$(state_get 'FIREWALL_ICMP_MODE')"
+  if [ -n "$mode" ]; then
+    nftables_icmp_mode_normalize "$mode"
+    return
+  fi
+
+  legacy="$(state_get 'FIREWALL_ALLOW_ICMP')"
+  if [ "$legacy" = '1' ]; then
+    printf '%s\n' 'essential'
+  else
+    printf '%s\n' 'off'
+  fi
+}
+
+nftables_forward_mode_normalize() {
+  local mode="${1:-}"
+  case "$mode" in
+    strict) printf '%s\n' 'strict' ;;
+    docker|'') printf '%s\n' 'docker' ;;
+    *) printf '%s\n' 'docker' ;;
+  esac
+}
+
+nftables_forward_mode() {
+  nftables_forward_mode_normalize "$(state_get 'FIREWALL_FORWARD_MODE')"
+}
+
+nftables_setup_icmp_mode() {
+  local mode legacy
+  mode="$(state_get 'FIREWALL_ICMP_MODE')"
+  if [ -n "$mode" ]; then
+    nftables_icmp_mode_normalize "$mode"
+    return
+  fi
+
+  legacy="$(state_get 'FIREWALL_ALLOW_ICMP')"
+  if [ -n "$legacy" ]; then
+    nftables_icmp_mode_normalize "$legacy"
+  else
+    printf '%s\n' 'essential'
+  fi
+}
+
+nftables_render_icmp_rules() {
+  local mode
+  mode="$(nftables_icmp_mode_normalize "$1")"
+  case "$mode" in
+    essential)
+      printf '    meta l4proto icmp icmp type { echo-request, destination-unreachable, time-exceeded, parameter-problem } accept comment "linuxvm-init:icmp-essential-v4"\n'
+      printf '    meta l4proto icmpv6 icmpv6 type { echo-request, destination-unreachable, packet-too-big, time-exceeded, parameter-problem, nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } accept comment "linuxvm-init:icmp-essential-v6"\n'
+      ;;
+    all)
+      printf '    meta l4proto { icmp, ipv6-icmp } accept comment "linuxvm-init:icmp-all"\n'
+      ;;
+  esac
+}
+
+nftables_render_forward_rules() {
+  local mode
+  mode="$(nftables_forward_mode_normalize "$1")"
+  if [ "$mode" = 'docker' ]; then
+    printf '    ct state established,related accept comment "linuxvm-init:forward-established"\n'
+    printf '    iifname "docker0" accept comment "linuxvm-init:forward-docker0-in"\n'
+    printf '    oifname "docker0" accept comment "linuxvm-init:forward-docker0-out"\n'
+    printf '    iifname "br-*" accept comment "linuxvm-init:forward-docker-bridge-in"\n'
+    printf '    oifname "br-*" accept comment "linuxvm-init:forward-docker-bridge-out"\n'
+  fi
 }
 
 nftables_state_add_port() {
@@ -108,7 +189,8 @@ nftables_render_ruleset() {
   local source_ip="${3:-}"
   local allowed_tcp_ports="${4:-}"
   local allowed_udp_ports="${5:-}"
-  local allow_icmp="${6:-0}"
+  local icmp_mode="${6:-off}"
+  local forward_mode="${7:-docker}"
   local port
 
   if ! is_valid_port "$ssh_port"; then
@@ -143,13 +225,12 @@ nftables_render_ruleset() {
         printf '    udp dport %s accept comment "linuxvm-init:udp-%s"\n' "$port" "$port"
       fi
     done
-    if [ "$allow_icmp" = '1' ]; then
-      printf '    meta l4proto { icmp, ipv6-icmp } accept comment "linuxvm-init:icmp"\n'
-    fi
+    nftables_render_icmp_rules "$icmp_mode"
     printf '  }\n'
     printf '\n'
     printf '  chain forward {\n'
     printf '    type filter hook forward priority 0; policy drop;\n'
+    nftables_render_forward_rules "$forward_mode"
     printf '  }\n'
     printf '\n'
     printf '  chain output {\n'
@@ -164,29 +245,96 @@ nftables_validate_ruleset() {
   run_argv nft -c -f "$rules_file"
 }
 
+nftables_verify_ssh_rule() {
+  local ssh_port="$1"
+  nft list chain "$NFTABLES_FAMILY" "$NFTABLES_TABLE" input 2>/dev/null | grep -Eq "tcp dport ${ssh_port} .*accept"
+}
+
+nftables_restore_managed_table() {
+  local table_backup="$1"
+  local had_table="$2"
+
+  say '尝试恢复上一份脚本管理的 nftables 表。' 'Trying to restore the previous managed nftables table.'
+  nft delete table "$NFTABLES_FAMILY" "$NFTABLES_TABLE" >/dev/null 2>&1 || true
+  if [ "$had_table" = '1' ] && [ -s "$table_backup" ]; then
+    if nft -f "$table_backup" >/dev/null 2>&1; then
+      say '已恢复上一份 nftables 管理表。' 'Restored the previous managed nftables table.'
+      return 0
+    fi
+    say '恢复上一份 nftables 管理表失败，请检查快照或备份。' 'Failed to restore the previous managed nftables table; inspect snapshots or backups.'
+    return 1
+  fi
+  return 0
+}
+
 nftables_apply_ruleset_file() {
   local rules_file="$1"
   local ssh_port="$2"
+  local previous_table previous_conf had_table had_conf rc
+  previous_table="$(mktemp /tmp/linuxvm-init-nftables-prev-table.XXXXXX)" || return 1
+  previous_conf="$(mktemp /tmp/linuxvm-init-nftables-prev-conf.XXXXXX)" || {
+    rm -f "$previous_table"
+    return 1
+  }
+  had_table='0'
+  had_conf='0'
 
-  nftables_validate_ruleset "$rules_file" || return 1
+  nftables_validate_ruleset "$rules_file" || {
+    rm -f "$previous_table" "$previous_conf"
+    return 1
+  }
+  if nft list table "$NFTABLES_FAMILY" "$NFTABLES_TABLE" >"$previous_table" 2>/dev/null; then
+    had_table='1'
+  fi
+  if [ -f "$NFTABLES_CONF" ]; then
+    cp -p "$NFTABLES_CONF" "$previous_conf"
+    had_conf='1'
+  fi
   backup_file "$NFTABLES_CONF"
   mkdir -p "$(dirname "$NFTABLES_CONF")"
   cp "$rules_file" "$NFTABLES_CONF"
 
   if nft list table "$NFTABLES_FAMILY" "$NFTABLES_TABLE" >/dev/null 2>&1; then
-    run_argv nft delete table "$NFTABLES_FAMILY" "$NFTABLES_TABLE" || return 1
+    if ! run_argv nft delete table "$NFTABLES_FAMILY" "$NFTABLES_TABLE"; then
+      if [ "$had_conf" = '1' ]; then
+        cp -p "$previous_conf" "$NFTABLES_CONF"
+      else
+        rm -f "$NFTABLES_CONF"
+      fi
+      rm -f "$previous_table" "$previous_conf"
+      return 1
+    fi
   fi
-  run_argv nft -f "$NFTABLES_CONF" || return 1
-  run_cmd 'systemctl enable nftables 2>/dev/null || true'
+  run_argv nft -f "$NFTABLES_CONF"
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    if [ "$had_conf" = '1' ]; then
+      cp -p "$previous_conf" "$NFTABLES_CONF"
+    else
+      rm -f "$NFTABLES_CONF"
+    fi
+    nftables_restore_managed_table "$previous_table" "$had_table"
+    rm -f "$previous_table" "$previous_conf"
+    return "$rc"
+  fi
 
-  if ! nft list chain "$NFTABLES_FAMILY" "$NFTABLES_TABLE" input 2>/dev/null | grep -Eq "tcp dport ${ssh_port} .*accept"; then
+  if ! nftables_verify_ssh_rule "$ssh_port"; then
     say '未能确认 SSH 端口放行规则，防火墙应用失败。' 'Could not verify the SSH allow rule, firewall apply failed.'
+    if [ "$had_conf" = '1' ]; then
+      cp -p "$previous_conf" "$NFTABLES_CONF"
+    else
+      rm -f "$NFTABLES_CONF"
+    fi
+    nftables_restore_managed_table "$previous_table" "$had_table"
+    rm -f "$previous_table" "$previous_conf"
     return 1
   fi
+  run_cmd 'systemctl enable nftables 2>/dev/null || true'
 
   state_set 'FIREWALL_MODE' 'nftables'
   state_set 'FIREWALL_SSH_PORT' "$ssh_port"
   say "nftables 已应用，并已放行 SSH 端口 ${ssh_port}。" "nftables applied and SSH port ${ssh_port} is allowed."
+  rm -f "$previous_table" "$previous_conf"
 }
 
 nftables_write_and_apply() {
@@ -194,11 +342,12 @@ nftables_write_and_apply() {
   local source_ip="${2:-}"
   local allowed_tcp_ports="${3:-}"
   local allowed_udp_ports="${4:-}"
-  local allow_icmp="${5:-0}"
+  local icmp_mode="${5:-off}"
+  local forward_mode="${6:-docker}"
   local tmp_file rc
 
   tmp_file="$(mktemp /tmp/linuxvm-init-nftables.XXXXXX)" || return 1
-  nftables_render_ruleset "$tmp_file" "$ssh_port" "$source_ip" "$allowed_tcp_ports" "$allowed_udp_ports" "$allow_icmp" || {
+  nftables_render_ruleset "$tmp_file" "$ssh_port" "$source_ip" "$allowed_tcp_ports" "$allowed_udp_ports" "$icmp_mode" "$forward_mode" || {
     rm -f "$tmp_file"
     return 1
   }
@@ -222,7 +371,7 @@ nftables_current_ssh_port() {
 }
 
 nftables_apply_current_state() {
-  local ssh_port source_ip tcp_ports udp_ports allow_icmp
+  local ssh_port source_ip tcp_ports udp_ports icmp_mode forward_mode
   nftables_install || return 1
   ssh_port="$(nftables_current_ssh_port)"
   if ! is_valid_port "$ssh_port"; then
@@ -232,9 +381,11 @@ nftables_apply_current_state() {
   source_ip="$(state_get 'FIREWALL_SSH_SOURCE_IP')"
   tcp_ports="$(nftables_allowed_ports)"
   udp_ports="$(nftables_allowed_udp_ports)"
-  allow_icmp='0'
-  nftables_icmp_allowed && allow_icmp='1'
-  nftables_write_and_apply "$ssh_port" "$source_ip" "$tcp_ports" "$udp_ports" "$allow_icmp"
+  icmp_mode="$(nftables_icmp_mode)"
+  forward_mode="$(nftables_forward_mode)"
+  state_set 'FIREWALL_ICMP_MODE' "$icmp_mode"
+  state_set 'FIREWALL_FORWARD_MODE' "$forward_mode"
+  nftables_write_and_apply "$ssh_port" "$source_ip" "$tcp_ports" "$udp_ports" "$icmp_mode" "$forward_mode"
 }
 
 nftables_allow_tcp_port() {
@@ -289,11 +440,13 @@ nftables_remove_udp_port() {
 }
 
 nftables_allow_icmp() {
+  state_set 'FIREWALL_ICMP_MODE' 'essential'
   state_set 'FIREWALL_ALLOW_ICMP' '1'
   nftables_apply_current_state
 }
 
 nftables_remove_icmp() {
+  state_set 'FIREWALL_ICMP_MODE' 'off'
   state_set 'FIREWALL_ALLOW_ICMP' '0'
   nftables_apply_current_state
 }
@@ -462,7 +615,7 @@ nftables_setup() {
     setup_tcp_ports="$(nftables_normalize_port_list "${setup_tcp_ports}${setup_tcp_ports:+,}443")"
   fi
 
-  say "二次确认：即将放行 SSH 端口 ${FIREWALL_SSH_PORT}；即将启用默认策略 INPUT=DROP, FORWARD=DROP, OUTPUT=ACCEPT" "Final check: SSH port ${FIREWALL_SSH_PORT} will be allowed; default policy to apply: INPUT=DROP, FORWARD=DROP, OUTPUT=ACCEPT"
+  say "二次确认：即将放行 SSH 端口 ${FIREWALL_SSH_PORT}；ICMP=essential；FORWARD=docker；默认策略 INPUT=DROP, FORWARD=DROP, OUTPUT=ACCEPT" "Final check: SSH port ${FIREWALL_SSH_PORT} will be allowed; ICMP=essential; FORWARD=docker; default policy to apply: INPUT=DROP, FORWARD=DROP, OUTPUT=ACCEPT"
   if ! confirm '确认应用 nftables 防火墙？[y/N]' 'Confirm applying nftables firewall? [y/N]'; then
     return 2
   fi
@@ -470,6 +623,8 @@ nftables_setup() {
   state_set 'FIREWALL_SSH_PORT' "$FIREWALL_SSH_PORT"
   state_set 'FIREWALL_SSH_SOURCE_IP' "$source_ip"
   state_set 'FIREWALL_ALLOWED_TCP_PORTS' "$setup_tcp_ports"
+  state_set 'FIREWALL_ICMP_MODE' "$(nftables_setup_icmp_mode)"
+  state_set 'FIREWALL_FORWARD_MODE' 'docker'
   nftables_apply_current_state || return 1
   run_cmd "nft list table ${NFTABLES_FAMILY} ${NFTABLES_TABLE}"
 }

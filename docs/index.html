@@ -385,7 +385,7 @@
       <div class="feature-card">
         <div class="icon">🛡️</div>
         <h3>防火墙管理</h3>
-        <p>统一使用 nftables，启用前强制检测并放行 SSH 端口，TCP/UDP/ICMP 规则分开管理。</p>
+        <p>统一使用 nftables，启用前强制检测并放行 SSH 端口，按协议管理规则并兼容 Docker 转发。</p>
       </div>
       <div class="feature-card">
         <div class="icon">🐳</div>
@@ -749,6 +749,7 @@
         '<span class="t-blue">请选择 SSH 端口 (1024-65535，直接回车随机生成):</span>',
         { prefix: '<span class="t-dim">&gt;</span> ', typed: '', speed: SLOW, pause: 300 },
         '<span class="t-green">随机生成端口：34521</span>',
+        'ICMP 策略：essential；FORWARD 策略：docker',
         '<span class="t-dim">&gt;&gt; nft -c -f /tmp/linuxvm-init-nftables.xxxxxx</span>',
         '<span class="t-green">nftables 已应用，并已放行 SSH 端口 34521。</span>',
         '',
