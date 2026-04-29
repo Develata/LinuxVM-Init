@@ -339,7 +339,7 @@
     <h1><span class="accent">LinuxVM</span>-Init</h1>
     <p class="tagline">面向小白的 Linux VPS 一键初始化工具 · 仅 Debian / Ubuntu</p>
     <div class="badges">
-      <span class="badge"><span class="dot green"></span>v1.0.6</span>
+      <span class="badge"><span class="dot green"></span>v1.0.7</span>
       <span class="badge"><span class="dot cyan"></span>Bash Script</span>
       <span class="badge"><span class="dot yellow"></span>MIT License</span>
       <span class="badge"><span class="dot purple"></span>中文 / English</span>
@@ -385,7 +385,7 @@
       <div class="feature-card">
         <div class="icon">🛡️</div>
         <h3>防火墙管理</h3>
-        <p>支持 ufw 与 iptables 双方案，启用前强制放行 SSH 端口，规则可视化管理。</p>
+        <p>统一使用 nftables，启用前强制检测并放行 SSH 端口，TCP/UDP/ICMP 规则分开管理。</p>
       </div>
       <div class="feature-card">
         <div class="icon">🐳</div>
@@ -550,7 +550,7 @@
     <div class="arch-tree">
 <span class="dir">LinuxVM-Init/</span>
 ├── <span class="file">vps-init.sh</span>          <span class="desc">← 主入口脚本</span>
-├── <span class="file">VERSION</span>              <span class="desc">← 语义化版本号 (v1.0.6)</span>
+├── <span class="file">VERSION</span>              <span class="desc">← 语义化版本号 (v1.0.7)</span>
 ├── <span class="file">install.sh</span>           <span class="desc">← 安装全局命令 lvm</span>
 ├── <span class="file">uninstall.sh</span>         <span class="desc">← 卸载全局命令</span>
 ├── <span class="file">selfcheck.sh</span>         <span class="desc">← 发布前自检脚本</span>
@@ -567,7 +567,7 @@
     ├── <span class="file">ssh_port.sh</span>      <span class="desc">← SSH 端口与策略</span>
     ├── <span class="file">ssh_auth.sh</span>      <span class="desc">← SSH 密钥登录</span>
     ├── <span class="file">ssh_manage.sh</span>    <span class="desc">← SSH 管理面板</span>
-    ├── <span class="file">ufw.sh</span>           <span class="desc">← 防火墙 (ufw + iptables)</span>
+    ├── <span class="file">firewall.sh</span>      <span class="desc">← 防火墙 (nftables)</span>
     ├── <span class="file">firewall_manage.sh</span> <span class="desc">← 防火墙管理面板</span>
     ├── <span class="file">fail2ban.sh</span>      <span class="desc">← fail2ban 安装与配置</span>
     ├── <span class="file">fail2ban_manage.sh</span> <span class="desc">← fail2ban 管理面板</span>
@@ -698,8 +698,8 @@
       typeLines('term-menu', [
         '<span class="t-cyan">==== LinuxVM-Init 菜单 ====</span>',
         '维护者: Develata | 仓库: https://github.com/Develata/LinuxVM-Init',
-        '版本: 当前=v1.0.6 最新=v1.0.6',
-        '状态: 系统=debian12 SSH=22 防火墙=ufw fail2ban=active 快照=20260228-210000',
+        '版本: 当前=v1.0.7 最新=v1.0.7',
+        '状态: 系统=debian12 SSH=22 防火墙=nftables fail2ban=active 快照=20260228-210000',
         '',
         '提示：输入编号执行；输入 q 退出。',
         '0) Init 一键顺序配置（推荐）',
@@ -749,8 +749,8 @@
         '<span class="t-blue">请选择 SSH 端口 (1024-65535，直接回车随机生成):</span>',
         { prefix: '<span class="t-dim">&gt;</span> ', typed: '', speed: SLOW, pause: 300 },
         '<span class="t-green">随机生成端口：34521</span>',
-        '<span class="t-dim">&gt;&gt; ufw allow 34521/tcp</span>',
-        '<span class="t-green">已放行 SSH 端口 34521。</span>',
+        '<span class="t-dim">&gt;&gt; nft -c -f /tmp/linuxvm-init-nftables.xxxxxx</span>',
+        '<span class="t-green">nftables 已应用，并已放行 SSH 端口 34521。</span>',
         '',
         '步骤5/8：fail2ban。说明：默认参数已较保守，失败登录过多会自动封禁。',
         { prefix: '<span class="t-blue">执行步骤5（fail2ban）？[y/N]</span> ', typed: 'y', speed: SLOW, pause: 300 },
@@ -851,8 +851,8 @@
         '<span class="t-cyan">==== 常见回滚提示 ====</span>',
         'SSH 配置回滚：cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config && systemctl restart sshd',
         'Docker 配置回滚：cp /etc/docker/daemon.json.bak /etc/docker/daemon.json && systemctl restart docker',
-        '查看防火墙：ufw status numbered（手动删除错误规则）',
-        'iptables 回滚：iptables-restore < /etc/iptables/rules.v4.bak && netfilter-persistent save',
+        '查看防火墙：nft list table inet linuxvm_init',
+        'nftables 回滚：通过 lvm 进入 7) 快照与回滚，或查看 /etc/linuxvm-init/legacy-firewall-backups/',
         'Swap 回滚：swapoff /root/swapfile && rm -f /root/swapfile（并手动清理 /etc/fstab）',
       ], 55);
     };

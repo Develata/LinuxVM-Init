@@ -26,6 +26,10 @@ snapshot_create() {
   [ -f /etc/iptables/rules.v6 ] && cp /etc/iptables/rules.v6 "$dir/rules.v6"
   [ -f /etc/ufw/user.rules ] && cp /etc/ufw/user.rules "$dir/ufw_user.rules"
   [ -f /etc/ufw/user6.rules ] && cp /etc/ufw/user6.rules "$dir/ufw_user6.rules"
+  [ -f /etc/nftables.conf ] && cp /etc/nftables.conf "$dir/nftables.conf"
+  if is_installed nft; then
+    nft list ruleset >"$dir/nft-list-ruleset.txt" 2>"$dir/nft-list-ruleset.err" || true
+  fi
   [ -f /etc/apt/apt.conf.d/20auto-upgrades ] && cp /etc/apt/apt.conf.d/20auto-upgrades "$dir/20auto-upgrades"
   [ -f /etc/docker/daemon.json ] && cp /etc/docker/daemon.json "$dir/daemon.json"
   [ -f /etc/systemd/system/docker.service.d/http-proxy.conf ] && cp /etc/systemd/system/docker.service.d/http-proxy.conf "$dir/docker_http_proxy.conf"
@@ -68,6 +72,7 @@ snapshot_restore_by_id() {
   [ -f "$dir/rules.v6" ] && mkdir -p /etc/iptables && cp "$dir/rules.v6" /etc/iptables/rules.v6
   [ -f "$dir/ufw_user.rules" ] && mkdir -p /etc/ufw && cp "$dir/ufw_user.rules" /etc/ufw/user.rules
   [ -f "$dir/ufw_user6.rules" ] && mkdir -p /etc/ufw && cp "$dir/ufw_user6.rules" /etc/ufw/user6.rules
+  [ -f "$dir/nftables.conf" ] && cp "$dir/nftables.conf" /etc/nftables.conf
   [ -f "$dir/20auto-upgrades" ] && mkdir -p /etc/apt/apt.conf.d && cp "$dir/20auto-upgrades" /etc/apt/apt.conf.d/20auto-upgrades
   [ -f "$dir/daemon.json" ] && mkdir -p /etc/docker && cp "$dir/daemon.json" /etc/docker/daemon.json
   if [ -f "$dir/docker_http_proxy.conf" ]; then
@@ -88,8 +93,10 @@ snapshot_restore_by_id() {
   run_cmd 'systemctl restart ssh.socket 2>/dev/null || true'
   run_cmd 'systemctl restart fail2ban 2>/dev/null || true'
   run_cmd 'systemctl restart docker 2>/dev/null || true'
-  run_cmd 'netfilter-persistent reload 2>/dev/null || true'
-  run_cmd 'ufw reload 2>/dev/null || true'
+  if [ -f /etc/nftables.conf ] && is_installed nft; then
+    run_cmd "nft delete table ${NFTABLES_FAMILY} ${NFTABLES_TABLE} 2>/dev/null || true"
+    run_cmd 'nft -f /etc/nftables.conf'
+  fi
   say '快照回滚完成。' 'Snapshot restore completed.'
 }
 

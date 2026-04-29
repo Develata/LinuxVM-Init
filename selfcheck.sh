@@ -36,6 +36,7 @@ printf 'Root path: %s\n\n' "$BASE_DIR"
 check_file_exists "$BASE_DIR/vps-init.sh"
 check_file_exists "$BASE_DIR/lib/common.sh"
 check_file_exists "$BASE_DIR/modules/panel_main.sh"
+check_file_exists "$BASE_DIR/modules/firewall.sh"
 check_file_exists "$BASE_DIR/modules/safe_mode.sh"
 check_file_exists "$BASE_DIR/modules/snapshot.sh"
 check_file_exists "$BASE_DIR/modules/monitor.sh"
@@ -68,7 +69,7 @@ if source "$BASE_DIR/lib/common.sh" \
   && source "$BASE_DIR/modules/ssh_auth.sh" \
   && source "$BASE_DIR/modules/ssh_manage.sh" \
   && source "$BASE_DIR/modules/snapshot.sh" \
-  && source "$BASE_DIR/modules/ufw.sh" \
+  && source "$BASE_DIR/modules/firewall.sh" \
   && source "$BASE_DIR/modules/firewall_manage.sh" \
   && source "$BASE_DIR/modules/swap.sh" \
   && source "$BASE_DIR/modules/docker.sh" \
@@ -86,7 +87,7 @@ else
   fail 'failed to source one or more modules'
 fi
 
-required_functions='main_menu init_flow ssh_manage docker_manage firewall_manage fail2ban_manage novice_safe_repair snapshot_create monitor_manage script_update'
+required_functions='main_menu init_flow ssh_manage docker_manage firewall_manage nftables_setup fail2ban_manage novice_safe_repair snapshot_create monitor_manage script_update'
 for fn in $required_functions; do
   if declare -F "$fn" >/dev/null 2>&1; then
     ok "function available: $fn"

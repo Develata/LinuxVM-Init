@@ -13,7 +13,7 @@
 ## 脚本会做什么
 - 系统初始化：更新软件包、安装常用工具、可选创建普通用户并加入 sudo。
 - SSH 安全：可选修改 SSH 端口、调整 root/密码/密钥登录策略，并在变更后给出测试命令。
-- 防火墙：支持 `ufw` 与 `iptables`，启用前强制检测并放行 SSH 端口。
+- 防火墙：统一使用 `nftables`，启用前强制检测并放行 SSH 端口，同时覆盖 IPv4/IPv6；自定义放行规则区分 TCP、UDP、ICMP。
 - Fail2ban：可安装并配置防爆破策略，支持手动封禁/解封 IP。
 - 运行环境：可选安装 Docker、配置 Docker 日志限制、配置 Swap、启用自动安全更新。
 - Docker 安装流程会同时检测并安装 Docker Compose（优先 compose 插件）。
@@ -80,15 +80,17 @@ sudo bash vps-init.sh --non-interactive --distro ubuntu24
 - `--lang en`：英文输出
 - `--yes`：自动确认
 - 环境开关：`NI_RUN_SYSTEM_UPDATE=1 NI_RUN_TOOLS=1 NI_RUN_FIREWALL=0 NI_RUN_FAIL2BAN=0 NI_RUN_UNATTENDED=1`
-- 防火墙后端（仅非交互且启用防火墙时）：`NI_FIREWALL_MODE=ufw` 或 `NI_FIREWALL_MODE=iptables`
+- 防火墙后端已固定为 `nftables`；旧的 `NI_FIREWALL_MODE=ufw/iptables` 会被忽略并提示。
 
 ## 关键说明
 - SSH 端口可手动输入或随机生成（`20000–60999`）。
 - SSH 端口会检测占用状态，并过滤常见保留黑名单端口。
 - SSH 相关高风险操作默认跳过，需手动确认后才执行。
 - 选择密钥登录后，会强制关闭密码登录。
-- 防火墙支持 `ufw` 与 `iptables` 两种方案可选。
+- 防火墙统一使用 `nftables`，通过 `inet` 表同时管理 IPv4/IPv6。
+- 防火墙放行规则按协议分别管理：TCP/UDP 需要端口，ICMP 不使用端口。
 - 防火墙模式会持久化记录在 `/etc/linuxvm-init/state.env`。
+- 检测到旧 `ufw` / `iptables-persistent` 配置时，会先保存旧规则到 `/etc/linuxvm-init/legacy-firewall-backups/`，确认后再禁用旧防火墙服务并切换到 nftables。
 - 防火墙与 fail2ban 变更时会优先保护当前来源 IP（可检测时）。
 - 当检测到主机内存小于 1G 时，默认跳过 Docker 安装。
 - 若内存小于 1G，仍可在主菜单 `2) Docker 管理面板` 中手动确认“强制安装”。
@@ -99,7 +101,7 @@ sudo bash vps-init.sh --non-interactive --distro ubuntu24
 - 主菜单 `0) Init 一键顺序配置`：按推荐顺序执行初始化。
 - 主菜单 `1) SSH 管理面板`：SSH 相关操作全部集中管理。
 - 主菜单 `2) Docker 管理面板`：Docker 安装、Compose、代理、日志限制统一管理。
-- 主菜单 `3) 防火墙管理面板`：`ufw` 与 `iptables` 的规则和策略管理。
+- 主菜单 `3) 防火墙管理面板`：nftables 规则查看、TCP/UDP/ICMP 放行与删除、配置重载。
 - 主菜单 `4) fail2ban 管理面板`：支持安装/初始化、策略调整、封禁与解封 IP。
 - 主菜单 `5) 系统维护`：系统更新、工具、用户、自动更新管理、logrotate、1panel。
 - 主菜单 `6) Swap 管理`：查看/重配/删除 swap。
@@ -110,7 +112,7 @@ sudo bash vps-init.sh --non-interactive --distro ubuntu24
 - 主菜单 `99) 新手一键修复（安全模式）`：应急修复 SSH/防火墙/fail2ban 可用性。
 - 主菜单顶部会显示版本信息：当前脚本版本与最新版本（基于 git）。
 - 快照自动清理：默认仅保留最近 14 天快照，旧快照在创建新快照时自动清理。
-- 快照会覆盖 SSH、ssh.socket drop-in、UFW/iptables IPv4/IPv6、fail2ban、Docker、Docker systemd 代理、自动更新、`/etc/fstab` 与脚本状态文件。
+- 快照会覆盖 SSH、ssh.socket drop-in、nftables、旧 UFW/iptables 规则备份、fail2ban、Docker、Docker systemd 代理、自动更新、`/etc/fstab` 与脚本状态文件。
 
 ### Init 步骤提示（与面板一致）
 - 每一步都会单独询问是否执行（`y/N`），不需要的步骤可直接回车跳过。
@@ -140,8 +142,8 @@ cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config
 rm -f /etc/systemd/system/ssh.socket.d/override.conf
 systemctl daemon-reload
 systemctl restart sshd || systemctl restart ssh
-ufw status numbered
-iptables -L -n --line-numbers
+nft list table inet linuxvm_init
+ls -la /etc/linuxvm-init/legacy-firewall-backups/
 ```
 
 如果使用了脚本快照，可运行 `lvm` 后进入 `7) 快照与回滚` 按快照 ID 恢复。
@@ -161,6 +163,7 @@ iptables -L -n --line-numbers
 - `modules/ssh_common.sh`：SSH 公共能力（端口检测、配置写入）
 - `modules/ssh_port.sh`：SSH 端口与 root 登录策略
 - `modules/ssh_auth.sh`：SSH 密钥登录策略
+- `modules/firewall.sh`：nftables 防火墙初始化、迁移与规则生成
 - `modules/panel_main.sh`：模块入口聚合（source 所有子模块）
 - `modules/`：其他功能模块（防火墙、Docker、swap、fail2ban 等）
 

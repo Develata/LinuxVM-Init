@@ -77,9 +77,7 @@ ssh_apply_selected_port() {
   backup_file '/etc/ssh/sshd_config'
   snapshot_create 'before-ssh-configure'
   set_sshd_option 'Port' "$SSH_PORT"
-  if is_installed ufw; then
-    protocol_allow_ssh_ufw "$SSH_PORT"
-  fi
+  protocol_allow_ssh_nftables "$SSH_PORT" || return 1
   if [ "$disable_root" = 'yes' ]; then
     set_sshd_option 'PermitRootLogin' 'no'
   fi
@@ -127,9 +125,7 @@ ssh_change_port_only() {
   backup_file '/etc/ssh/sshd_config'
   snapshot_create 'before-ssh-port-change'
   set_sshd_option 'Port' "$SSH_PORT"
-  if is_installed ufw; then
-    protocol_allow_ssh_ufw "$SSH_PORT"
-  fi
+  protocol_allow_ssh_nftables "$SSH_PORT" || return 1
 
   if [ "$DISTRO_ID" = 'ubuntu24' ]; then
     say '风险提示：Ubuntu24 可能需要配置 ssh.socket 双栈端口。' 'Warning: Ubuntu24 may require ssh.socket dual-stack config.'

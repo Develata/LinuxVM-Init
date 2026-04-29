@@ -20,7 +20,7 @@ report_file="$report_dir/daily-$(date +%F).log"
   echo "ssh status:"; systemctl is-active ssh 2>/dev/null || systemctl is-active sshd 2>/dev/null || true
   echo "fail2ban status:"; fail2ban-client status sshd 2>/dev/null || echo 'fail2ban not ready'
   echo "firewall mode:"; awk -F= '/^FIREWALL_MODE=/{print $2}' /etc/linuxvm-init/state.env 2>/dev/null || echo 'unknown'
-  echo "firewall snapshot:"; ufw status 2>/dev/null || iptables -L -n 2>/dev/null | head -n 20 || true
+  echo "firewall snapshot:"; nft list table inet linuxvm_init 2>/dev/null || nft list ruleset 2>/dev/null | head -n 40 || true
   echo
 } > "$report_file"
 EOF

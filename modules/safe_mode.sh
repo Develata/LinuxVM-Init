@@ -10,36 +10,18 @@ novice_safe_repair() {
   snapshot_create 'before-novice-safe-repair'
   detect_ssh_port_for_firewall || return 1
 
-  local src_ip fw_mode
+  local src_ip
   src_ip="$(detect_source_ip)"
-  fw_mode="$(state_get 'FIREWALL_MODE')"
 
-  if [ "$fw_mode" = 'iptables' ] && is_installed iptables; then
-    run_cmd 'DEBIAN_FRONTEND=noninteractive apt install -y iptables-persistent'
-    iptables_ensure_base_rules
-    [ -n "$src_ip" ] && protocol_allow_ssh_iptables_from_ip "$FIREWALL_SSH_PORT" "$src_ip"
-    protocol_allow_ssh_iptables "$FIREWALL_SSH_PORT"
-    run_cmd 'iptables -P INPUT DROP'
-    run_cmd 'iptables -P FORWARD DROP'
-    run_cmd 'iptables -P OUTPUT ACCEPT'
-    if is_installed ip6tables; then
-      run_cmd 'ip6tables -P INPUT DROP'
-      run_cmd 'ip6tables -P FORWARD DROP'
-      run_cmd 'ip6tables -P OUTPUT ACCEPT'
-      run_cmd 'ip6tables-save > /etc/iptables/rules.v6'
-    fi
-    run_cmd 'iptables-save > /etc/iptables/rules.v4'
-    run_cmd 'netfilter-persistent save'
-    run_cmd 'netfilter-persistent reload'
-  else
-    if ! is_installed ufw; then
-      run_cmd 'apt install -y ufw'
-    fi
-    protocol_allow_ssh_ufw "$FIREWALL_SSH_PORT"
-    [ -n "$src_ip" ] && protocol_allow_ssh_ufw_from_ip "$FIREWALL_SSH_PORT" "$src_ip"
-    run_cmd 'ufw --force enable'
-    state_set 'FIREWALL_MODE' 'ufw'
+  nftables_install || return 1
+  if nftables_legacy_firewall_detected; then
+    nftables_backup_legacy_firewalls
+    nftables_disable_legacy_firewalls
   fi
+  state_set 'FIREWALL_MODE' 'nftables'
+  state_set 'FIREWALL_SSH_PORT' "$FIREWALL_SSH_PORT"
+  state_set 'FIREWALL_SSH_SOURCE_IP' "$src_ip"
+  nftables_apply_current_state || return 1
 
   backup_file '/etc/ssh/sshd_config'
   set_sshd_option 'Port' "$FIREWALL_SSH_PORT"

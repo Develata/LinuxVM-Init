@@ -24,13 +24,19 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install ShellCheck
+      - name: Install validation tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y shellcheck
+          sudo apt-get install -y nftables shellcheck
 
       - name: Run repository selfcheck
         run: bash selfcheck.sh
+
+      - name: Validate generated nftables ruleset
+        run: |
+          tmp_file="$(mktemp)"
+          bash -lc 'source ./lib/common.sh; source ./modules/ssh_common.sh; source ./modules/firewall.sh; nftables_render_ruleset "$1" 34521 "2001:db8::1" "80,443" "53" "1"; nft -c -f "$1"' _ "$tmp_file"
+          rm -f "$tmp_file"
 
       - name: Run Debian container checks
         run: |

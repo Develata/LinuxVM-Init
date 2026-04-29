@@ -1,200 +1,108 @@
 #!/usr/bin/env bash
 
-ufw_manage_menu() {
-  local rule_no=''
-  while true; do
-    say '==== UFW 管理 ====' '==== UFW Management ===='
-    if [ "$LANG_CHOICE" = 'zh' ]; then
-      printf '%s\n' '1) 查看状态'
-      printf '%s\n' '2) 放行端口'
-      printf '%s\n' '3) 拒绝端口'
-      printf '%s\n' '4) 删除规则(按编号)'
-      printf '%s\n' '5) 启用防火墙'
-      printf '%s\n' '6) 关闭防火墙'
-      printf '%s\n' 'b) 返回'
-    else
-      printf '%s\n' '1) Show status'
-      printf '%s\n' '2) Allow port'
-      printf '%s\n' '3) Deny port'
-      printf '%s\n' '4) Delete rule by number'
-      printf '%s\n' '5) Enable firewall'
-      printf '%s\n' '6) Disable firewall'
-      printf '%s\n' 'b) Back'
-    fi
-    printf '%s ' '> '
-    read -r op
-    case "$op" in
-      1) run_cmd 'ufw status numbered' ;;
-      2)
-        ask '输入要放行的端口：' 'Enter port to allow:' port
-        if ! is_valid_port "$port"; then
-          say '端口无效。' 'Invalid port.'
-        else
-          run_argv ufw allow "${port}/tcp"
-        fi
-        ;;
-      3)
-        ask '输入要拒绝的端口：' 'Enter port to deny:' port
-        if ! is_valid_port "$port"; then
-          say '端口无效。' 'Invalid port.'
-        else
-          run_argv ufw deny "${port}/tcp"
-        fi
-        ;;
-      4)
-        run_cmd 'ufw status numbered'
-        ask '输入要删除的规则编号：' 'Enter rule number to delete:' rule_no
-        if ! [[ "$rule_no" =~ ^[0-9]+$ ]]; then
-          say '编号无效。' 'Invalid number.'
-        else
-          run_argv ufw --force delete "$rule_no"
-        fi
-        ;;
-      5) run_cmd 'ufw --force enable' ;;
-      6) run_cmd 'ufw disable' ;;
-      b|B) return 0 ;;
-      *) say '输入无效。' 'Invalid input.' ;;
-    esac
-  done
-}
-
-iptables_delete_port_rules() {
-  local port="$1"
-  local _tries=0
-  while iptables_has_tcp_rule "$port"; do
-    run_argv iptables -D INPUT -p tcp --dport "$port" -j ACCEPT
-    _tries=$((_tries + 1))
-    [ "$_tries" -ge 50 ] && break
-  done
-  _tries=0
-  while iptables -C INPUT -p udp --dport "$port" -j ACCEPT >/dev/null 2>&1; do
-    run_argv iptables -D INPUT -p udp --dport "$port" -j ACCEPT
-    _tries=$((_tries + 1))
-    [ "$_tries" -ge 50 ] && break
-  done
-  if is_installed ip6tables; then
-    _tries=0
-    while ip6tables_has_tcp_rule "$port"; do
-      run_argv ip6tables -D INPUT -p tcp --dport "$port" -j ACCEPT
-      _tries=$((_tries + 1))
-      [ "$_tries" -ge 50 ] && break
-    done
-    _tries=0
-    while ip6tables -C INPUT -p udp --dport "$port" -j ACCEPT >/dev/null 2>&1; do
-      run_argv ip6tables -D INPUT -p udp --dport "$port" -j ACCEPT
-      _tries=$((_tries + 1))
-      [ "$_tries" -ge 50 ] && break
-    done
-  fi
-}
-
-iptables_save_all() {
-  run_cmd 'iptables-save > /etc/iptables/rules.v4'
-  if is_installed ip6tables; then
-    run_cmd 'ip6tables-save > /etc/iptables/rules.v6'
-  fi
-  run_cmd 'netfilter-persistent save'
-}
-
-iptables_restore_backup() {
-  if [ ! -f /etc/iptables/rules.v4.bak ]; then
-    say '未找到备份文件 /etc/iptables/rules.v4.bak' 'Backup file /etc/iptables/rules.v4.bak not found'
-    return 1
-  fi
-  run_cmd 'iptables-restore < /etc/iptables/rules.v4.bak'
-  if [ -f /etc/iptables/rules.v6.bak ] && is_installed ip6tables; then
-    run_cmd 'ip6tables-restore < /etc/iptables/rules.v6.bak'
-  fi
-  iptables_save_all
-}
-
-iptables_manage_menu() {
-  while true; do
-    say '==== iptables 管理 ====' '==== iptables Management ===='
-    if [ "$LANG_CHOICE" = 'zh' ]; then
-      printf '%s\n' '1) 查看规则'
-      printf '%s\n' '2) 放行端口'
-      printf '%s\n' '3) 删除端口放行'
-      printf '%s\n' '4) 保存规则'
-      printf '%s\n' '5) 从备份恢复规则'
-      printf '%s\n' 'b) 返回'
-    else
-      printf '%s\n' '1) Show rules'
-      printf '%s\n' '2) Allow port'
-      printf '%s\n' '3) Remove allowed port'
-      printf '%s\n' '4) Save rules'
-      printf '%s\n' '5) Restore from backup'
-      printf '%s\n' 'b) Back'
-    fi
-    printf '%s ' '> '
-    read -r op
-    case "$op" in
-      1) run_cmd 'iptables -L -n --line-numbers' ;;
-      2)
-        ask '输入要放行的端口：' 'Enter port to allow:' port
-        if ! is_valid_port "$port"; then
-          say '端口无效。' 'Invalid port.'
-        else
-          iptables_allow_port "$port"
-          iptables_save_all
-        fi
-        ;;
-      3)
-        ask '输入要删除放行的端口：' 'Enter port to remove:' port
-        if ! is_valid_port "$port"; then
-          say '端口无效。' 'Invalid port.'
-        else
-          iptables_delete_port_rules "$port"
-          iptables_save_all
-        fi
-        ;;
-      4)
-        iptables_save_all
-        ;;
-      5)
-        iptables_restore_backup
-        ;;
-      b|B) return 0 ;;
-      *) say '输入无效。' 'Invalid input.' ;;
-    esac
-  done
-}
-
 firewall_manage() {
-  local current_mode
+  local current_mode op port protocol backup_dir
   current_mode="$(state_get 'FIREWALL_MODE')"
   if [ -n "$current_mode" ]; then
     say "当前记录模式：$current_mode" "Current recorded mode: $current_mode"
   fi
-  say '0) 首次安装/初始化防火墙  1) 管理 ufw  2) 管理 iptables' '0) Initial firewall setup  1) Manage ufw  2) Manage iptables'
-  printf '%s ' '> '
-  read -r mode
-  if [ -z "$mode" ] && [ -n "$current_mode" ]; then
-    mode="$([ "$current_mode" = 'iptables' ] && printf '2' || printf '1')"
-  fi
-  case "$mode" in
-    0)
-      firewall_setup
-      ;;
-    1)
-      if ! is_installed ufw; then
-        say '未检测到 ufw。' 'ufw is not installed.'
-        return 1
-      fi
-      state_set 'FIREWALL_MODE' 'ufw'
-      ufw_manage_menu
-      ;;
-    2)
-      if ! is_installed iptables; then
-        say '未检测到 iptables。' 'iptables is not installed.'
-        return 1
-      fi
-      state_set 'FIREWALL_MODE' 'iptables'
-      iptables_manage_menu
-      ;;
-    *)
-      say '输入无效。' 'Invalid input.'
-      return 1
-      ;;
-  esac
+
+  while true; do
+    say '==== nftables 防火墙管理 ====' '==== nftables Firewall Management ===='
+    if [ "$LANG_CHOICE" = 'zh' ]; then
+      printf '%s\n' '0) 首次安装/初始化防火墙'
+      printf '%s\n' '1) 查看脚本管理的 nftables 规则'
+      printf '%s\n' '2) 添加放行规则（tcp/udp/icmp）'
+      printf '%s\n' '3) 删除放行规则（tcp/udp/icmp）'
+      printf '%s\n' '4) 重载当前 nftables 配置'
+      printf '%s\n' '5) 查看最近旧防火墙备份目录'
+      printf '%s\n' 'b) 返回'
+    else
+      printf '%s\n' '0) Initial firewall setup'
+      printf '%s\n' '1) Show managed nftables rules'
+      printf '%s\n' '2) Add allow rule (tcp/udp/icmp)'
+      printf '%s\n' '3) Remove allow rule (tcp/udp/icmp)'
+      printf '%s\n' '4) Reload current nftables config'
+      printf '%s\n' '5) Show latest legacy firewall backup directory'
+      printf '%s\n' 'b) Back'
+    fi
+    printf '%s ' '> '
+    read -r op
+    case "$op" in
+      0)
+        firewall_setup
+        ;;
+      1)
+        if ! is_installed nft; then
+          say '未检测到 nftables。' 'nftables is not installed.'
+        else
+          run_cmd "nft list table ${NFTABLES_FAMILY} ${NFTABLES_TABLE}"
+        fi
+        ;;
+      2)
+        if ! nftables_managed_active; then
+          say 'nftables 尚未初始化，请先执行 0。' 'nftables is not initialized yet; run option 0 first.'
+          continue
+        fi
+        ask '输入协议 tcp/udp/icmp：' 'Enter protocol tcp/udp/icmp:' protocol
+        protocol="$(printf '%s' "$protocol" | tr '[:upper:]' '[:lower:]')"
+        port=''
+        case "$protocol" in
+          tcp|udp)
+            ask '输入要放行的端口：' 'Enter port to allow:' port
+            ;;
+          icmp)
+            ;;
+          *)
+            say '协议无效，请输入 tcp、udp 或 icmp。' 'Invalid protocol, use tcp, udp, or icmp.'
+            continue
+            ;;
+        esac
+        nftables_allow_rule "$protocol" "$port"
+        ;;
+      3)
+        if ! nftables_managed_active; then
+          say 'nftables 尚未初始化，请先执行 0。' 'nftables is not initialized yet; run option 0 first.'
+          continue
+        fi
+        ask '输入协议 tcp/udp/icmp：' 'Enter protocol tcp/udp/icmp:' protocol
+        protocol="$(printf '%s' "$protocol" | tr '[:upper:]' '[:lower:]')"
+        port=''
+        case "$protocol" in
+          tcp|udp)
+            ask '输入要删除放行的端口：' 'Enter allowed port to remove:' port
+            ;;
+          icmp)
+            ;;
+          *)
+            say '协议无效，请输入 tcp、udp 或 icmp。' 'Invalid protocol, use tcp, udp, or icmp.'
+            continue
+            ;;
+        esac
+        nftables_remove_rule "$protocol" "$port"
+        ;;
+      4)
+        if ! nftables_managed_active; then
+          say 'nftables 尚未初始化，请先执行 0。' 'nftables is not initialized yet; run option 0 first.'
+          continue
+        fi
+        nftables_apply_current_state
+        ;;
+      5)
+        backup_dir="$(state_get 'LAST_LEGACY_FIREWALL_BACKUP')"
+        if [ -n "$backup_dir" ]; then
+          say "最近旧防火墙备份目录：$backup_dir" "Latest legacy firewall backup directory: $backup_dir"
+          run_argv ls -la "$backup_dir"
+        else
+          say '尚无旧防火墙备份记录。' 'No legacy firewall backup has been recorded.'
+        fi
+        ;;
+      b|B)
+        return 0
+        ;;
+      *)
+        say '输入无效。' 'Invalid input.'
+        ;;
+    esac
+  done
 }

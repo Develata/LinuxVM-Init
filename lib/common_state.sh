@@ -39,8 +39,8 @@ print_rollback_hints() {
   say '==== 常见回滚提示 ====' '==== Common Rollback Hints ===='
   say 'SSH 配置回滚：cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config && systemctl restart sshd || systemctl restart ssh' 'SSH rollback: cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config && systemctl restart sshd || systemctl restart ssh'
   say 'Docker 配置回滚：cp /etc/docker/daemon.json.bak /etc/docker/daemon.json && systemctl restart docker' 'Docker rollback: cp /etc/docker/daemon.json.bak /etc/docker/daemon.json && systemctl restart docker'
-  say '查看防火墙：ufw status numbered（手动删除错误规则）' 'Check firewall: ufw status numbered (delete wrong rules manually)'
-  say 'iptables 回滚：iptables-restore < /etc/iptables/rules.v4.bak && netfilter-persistent save' 'iptables rollback: iptables-restore < /etc/iptables/rules.v4.bak && netfilter-persistent save'
+  say '查看防火墙：nft list table inet linuxvm_init' 'Check firewall: nft list table inet linuxvm_init'
+  say 'nftables 回滚：通过 lvm 进入 7) 快照与回滚，或查看 /etc/linuxvm-init/legacy-firewall-backups/' 'nftables rollback: use lvm menu 7) Snapshot & Restore, or inspect /etc/linuxvm-init/legacy-firewall-backups/'
   say 'Swap 回滚：swapoff /root/swapfile && rm -f /root/swapfile（并手动清理 /etc/fstab）' 'Swap rollback: swapoff /root/swapfile && rm -f /root/swapfile (clean /etc/fstab manually)'
 }
 
