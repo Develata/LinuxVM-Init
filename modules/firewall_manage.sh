@@ -23,6 +23,53 @@ nftables_show_state() {
   nftables_show_compat_state
 }
 
+firewall_show_iptables_rules() {
+  if is_installed iptables; then
+    say '==== IPv4 iptables filter ====' '==== IPv4 iptables filter ===='
+    run_argv iptables -nvL --line-numbers
+    say '==== IPv4 iptables nat ====' '==== IPv4 iptables nat ===='
+    run_argv iptables -t nat -nvL --line-numbers
+  else
+    say '未检测到 iptables。' 'iptables is not installed.'
+  fi
+
+  if is_installed ip6tables; then
+    say '==== IPv6 ip6tables filter ====' '==== IPv6 ip6tables filter ===='
+    run_argv ip6tables -nvL --line-numbers
+    say '==== IPv6 ip6tables nat ====' '==== IPv6 ip6tables nat ===='
+    run_argv ip6tables -t nat -nvL --line-numbers
+  else
+    say '未检测到 ip6tables。' 'ip6tables is not installed.'
+  fi
+}
+
+firewall_show_nftables_rules() {
+  if ! is_installed nft; then
+    say '未检测到 nftables。' 'nftables is not installed.'
+  elif nftables_managed_active; then
+    run_cmd "nft list table ${NFTABLES_FAMILY} ${NFTABLES_TABLE}"
+  else
+    say '未检测到脚本管理的 nftables 表。可用完整 ruleset 查看现有防火墙。' 'Managed nftables table was not found. Use full ruleset view to inspect the current firewall.'
+  fi
+}
+
+firewall_show_current_rules() {
+  local mode
+  mode="$(state_get 'FIREWALL_MODE')"
+  case "$mode" in
+    iptables) firewall_show_iptables_rules ;;
+    *) firewall_show_nftables_rules ;;
+  esac
+}
+
+firewall_show_full_ruleset() {
+  if ! is_installed nft; then
+    say '未检测到 nftables。' 'nftables is not installed.'
+  else
+    run_cmd 'nft list ruleset'
+  fi
+}
+
 firewall_manage() {
   local current_mode op port protocol backup_dir refreshed_stack
   current_mode="$(state_get 'FIREWALL_MODE')"
@@ -35,22 +82,24 @@ firewall_manage() {
     if [ "$LANG_CHOICE" = 'zh' ]; then
       printf '%s\n' '0) 首次安装/初始化防火墙'
       printf '%s\n' '1) 查看当前防火墙状态'
-      printf '%s\n' '2) 查看脚本管理的 nftables 规则'
+      printf '%s\n' '2) 按当前模式查看规则'
       printf '%s\n' '3) 添加放行规则（tcp/udp/icmp）'
       printf '%s\n' '4) 删除放行规则（tcp/udp/icmp）'
       printf '%s\n' '5) 重载当前 nftables 配置'
       printf '%s\n' '6) 查看最近旧防火墙备份目录'
       printf '%s\n' '7) 刷新网络栈检测'
+      printf '%s\n' '8) 查看完整 nftables ruleset'
       printf '%s\n' 'b) 返回'
     else
       printf '%s\n' '0) Initial firewall setup'
       printf '%s\n' '1) Show current firewall state'
-      printf '%s\n' '2) Show managed nftables rules'
+      printf '%s\n' '2) Show rules for current mode'
       printf '%s\n' '3) Add allow rule (tcp/udp/icmp)'
       printf '%s\n' '4) Remove allow rule (tcp/udp/icmp)'
       printf '%s\n' '5) Reload current nftables config'
       printf '%s\n' '6) Show latest legacy firewall backup directory'
       printf '%s\n' '7) Refresh network stack detection'
+      printf '%s\n' '8) Show full nftables ruleset'
       printf '%s\n' 'b) Back'
     fi
     printf '%s ' '> '
@@ -63,11 +112,7 @@ firewall_manage() {
         nftables_show_state
         ;;
       2)
-        if ! is_installed nft; then
-          say '未检测到 nftables。' 'nftables is not installed.'
-        else
-          run_cmd "nft list table ${NFTABLES_FAMILY} ${NFTABLES_TABLE}"
-        fi
+        firewall_show_current_rules
         ;;
       3)
         if ! nftables_managed_active; then
@@ -130,6 +175,9 @@ firewall_manage() {
       7)
         refreshed_stack="$(network_stack_refresh)"
         say "已刷新网络栈：${refreshed_stack}" "Network stack refreshed: ${refreshed_stack}"
+        ;;
+      8)
+        firewall_show_full_ruleset
         ;;
       b|B)
         return 0
