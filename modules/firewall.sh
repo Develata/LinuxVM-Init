@@ -163,6 +163,36 @@ nftables_iptables_saved_rules_detected() {
     || nftables_iptables_save_has_rules ip6tables-save
 }
 
+nftables_iptables_filter_table_detected() {
+  if ! is_installed nft; then
+    return 1
+  fi
+
+  nft list ruleset 2>/dev/null | awk '
+    $1 == "table" && ($2 == "ip" || $2 == "ip6") && $3 == "filter" { found = 1 }
+    END { exit(found ? 0 : 1) }
+  '
+}
+
+firewall_effective_mode() {
+  local mode
+  mode="$(state_get 'FIREWALL_MODE')"
+  case "$mode" in
+    iptables|nftables)
+      printf '%s\n' "$mode"
+      return
+      ;;
+  esac
+
+  if nftables_managed_active; then
+    printf '%s\n' 'nftables'
+  elif nftables_iptables_saved_rules_detected || nftables_iptables_filter_table_detected; then
+    printf '%s\n' 'iptables'
+  else
+    printf '%s\n' 'nftables'
+  fi
+}
+
 nftables_external_ruleset_detected() {
   if ! is_installed nft; then
     return 1
@@ -202,6 +232,7 @@ nftables_show_compat_state() {
   fi
 
   printf 'FIREWALL_IPTABLES_FRONTEND=%s\n' "$frontend"
+  printf 'FIREWALL_EFFECTIVE_MODE=%s\n' "$(firewall_effective_mode)"
   printf 'IPTABLES_LEGACY_RISK=%s\n' "$legacy_risk"
   printf 'IPTABLES_PERSISTENT_RULE_FILES=%s\n' "$persistent_rules"
   printf 'IPTABLES_SAVED_RULES_DETECTED=%s\n' "$saved_rules"
@@ -321,6 +352,200 @@ nftables_state_remove_udp_port() {
     fi
   done
   state_set 'FIREWALL_ALLOWED_UDP_PORTS' "$ports"
+}
+
+iptables_mode_command_for_family() {
+  case "$1" in
+    ipv4) printf '%s\n' 'iptables' ;;
+    ipv6) printf '%s\n' 'ip6tables' ;;
+    *) return 1 ;;
+  esac
+}
+
+iptables_mode_insert_position() {
+  local cmd="$1"
+  local pos
+  pos="$("$cmd" -nvL INPUT --line-numbers 2>/dev/null | awk '$0 ~ /f2b-sshd/ { line = $1 } END { if (line) print line + 1; else print 1 }')"
+  case "$pos" in
+    ''|*[!0-9]*) printf '%s\n' '1' ;;
+    *) printf '%s\n' "$pos" ;;
+  esac
+}
+
+iptables_mode_rule_exists() {
+  local cmd="$1"
+  shift
+  "$cmd" -C INPUT "$@" >/dev/null 2>&1
+}
+
+iptables_mode_add_input_rule() {
+  local family="$1"
+  shift
+  local cmd pos
+  cmd="$(iptables_mode_command_for_family "$family")" || return 1
+  if ! is_installed "$cmd"; then
+    say "${cmd} 未安装，跳过 ${family} 规则。" "${cmd} is not installed; skipping ${family} rule."
+    return 0
+  fi
+
+  if iptables_mode_rule_exists "$cmd" "$@"; then
+    return 0
+  fi
+  pos="$(iptables_mode_insert_position "$cmd")"
+  run_argv "$cmd" -I INPUT "$pos" "$@"
+}
+
+iptables_mode_delete_input_rule() {
+  local family="$1"
+  shift
+  local cmd deleted='0'
+  cmd="$(iptables_mode_command_for_family "$family")" || return 1
+  if ! is_installed "$cmd"; then
+    say "${cmd} 未安装，跳过 ${family} 规则。" "${cmd} is not installed; skipping ${family} rule."
+    return 0
+  fi
+
+  while iptables_mode_rule_exists "$cmd" "$@"; do
+    run_argv "$cmd" -D INPUT "$@" || return 1
+    deleted='1'
+  done
+  if [ "$deleted" != '1' ]; then
+    say "${cmd} 中未找到对应的 linuxvm-init 规则，跳过。" "No matching linuxvm-init rule found in ${cmd}; skipping."
+  fi
+  return 0
+}
+
+iptables_mode_for_each_enabled_family() {
+  local stack="$1"
+  local fn="$2"
+  shift 2
+  local rc=0
+  stack="$(network_stack_normalize "$stack")"
+  if network_stack_supports_ipv4 "$stack"; then
+    "$fn" ipv4 "$@" || rc=1
+  fi
+  if network_stack_supports_ipv6 "$stack"; then
+    "$fn" ipv6 "$@" || rc=1
+  fi
+  return "$rc"
+}
+
+iptables_mode_add_tcp_port() {
+  local port="$1"
+  local stack="$2"
+  iptables_mode_for_each_enabled_family "$stack" iptables_mode_add_input_rule -p tcp --dport "$port" -m comment --comment "linuxvm-init:tcp-${port}" -j ACCEPT
+}
+
+iptables_mode_add_udp_port() {
+  local port="$1"
+  local stack="$2"
+  iptables_mode_for_each_enabled_family "$stack" iptables_mode_add_input_rule -p udp --dport "$port" -m comment --comment "linuxvm-init:udp-${port}" -j ACCEPT
+}
+
+iptables_mode_delete_tcp_port() {
+  local port="$1"
+  local stack="$2"
+  iptables_mode_for_each_enabled_family "$stack" iptables_mode_delete_input_rule -p tcp --dport "$port" -m comment --comment "linuxvm-init:tcp-${port}" -j ACCEPT
+}
+
+iptables_mode_delete_udp_port() {
+  local port="$1"
+  local stack="$2"
+  iptables_mode_for_each_enabled_family "$stack" iptables_mode_delete_input_rule -p udp --dport "$port" -m comment --comment "linuxvm-init:udp-${port}" -j ACCEPT
+}
+
+iptables_mode_add_icmp_family() {
+  local family="$1"
+  case "$family" in
+    ipv4)
+      iptables_mode_add_input_rule ipv4 -p icmp --icmp-type echo-request -m comment --comment 'linuxvm-init:icmp-essential-v4-echo-request' -j ACCEPT || return 1
+      iptables_mode_add_input_rule ipv4 -p icmp --icmp-type destination-unreachable -m comment --comment 'linuxvm-init:icmp-essential-v4-destination-unreachable' -j ACCEPT || return 1
+      iptables_mode_add_input_rule ipv4 -p icmp --icmp-type time-exceeded -m comment --comment 'linuxvm-init:icmp-essential-v4-time-exceeded' -j ACCEPT || return 1
+      iptables_mode_add_input_rule ipv4 -p icmp --icmp-type parameter-problem -m comment --comment 'linuxvm-init:icmp-essential-v4-parameter-problem' -j ACCEPT
+      ;;
+    ipv6)
+      iptables_mode_add_input_rule ipv6 -p ipv6-icmp --icmpv6-type echo-request -m comment --comment 'linuxvm-init:icmp-essential-v6-echo-request' -j ACCEPT || return 1
+      iptables_mode_add_input_rule ipv6 -p ipv6-icmp --icmpv6-type destination-unreachable -m comment --comment 'linuxvm-init:icmp-essential-v6-destination-unreachable' -j ACCEPT || return 1
+      iptables_mode_add_input_rule ipv6 -p ipv6-icmp --icmpv6-type packet-too-big -m comment --comment 'linuxvm-init:icmp-essential-v6-packet-too-big' -j ACCEPT || return 1
+      iptables_mode_add_input_rule ipv6 -p ipv6-icmp --icmpv6-type time-exceeded -m comment --comment 'linuxvm-init:icmp-essential-v6-time-exceeded' -j ACCEPT || return 1
+      iptables_mode_add_input_rule ipv6 -p ipv6-icmp --icmpv6-type parameter-problem -m comment --comment 'linuxvm-init:icmp-essential-v6-parameter-problem' -j ACCEPT || return 1
+      iptables_mode_add_input_rule ipv6 -p ipv6-icmp --icmpv6-type router-solicitation -m comment --comment 'linuxvm-init:icmp-essential-v6-router-solicitation' -j ACCEPT || return 1
+      iptables_mode_add_input_rule ipv6 -p ipv6-icmp --icmpv6-type router-advertisement -m comment --comment 'linuxvm-init:icmp-essential-v6-router-advertisement' -j ACCEPT || return 1
+      iptables_mode_add_input_rule ipv6 -p ipv6-icmp --icmpv6-type neighbor-solicitation -m comment --comment 'linuxvm-init:icmp-essential-v6-neighbor-solicitation' -j ACCEPT || return 1
+      iptables_mode_add_input_rule ipv6 -p ipv6-icmp --icmpv6-type neighbor-advertisement -m comment --comment 'linuxvm-init:icmp-essential-v6-neighbor-advertisement' -j ACCEPT
+      ;;
+  esac
+}
+
+iptables_mode_delete_icmp_family() {
+  local family="$1"
+  case "$family" in
+    ipv4)
+      iptables_mode_delete_input_rule ipv4 -p icmp --icmp-type echo-request -m comment --comment 'linuxvm-init:icmp-essential-v4-echo-request' -j ACCEPT || true
+      iptables_mode_delete_input_rule ipv4 -p icmp --icmp-type destination-unreachable -m comment --comment 'linuxvm-init:icmp-essential-v4-destination-unreachable' -j ACCEPT || true
+      iptables_mode_delete_input_rule ipv4 -p icmp --icmp-type time-exceeded -m comment --comment 'linuxvm-init:icmp-essential-v4-time-exceeded' -j ACCEPT || true
+      iptables_mode_delete_input_rule ipv4 -p icmp --icmp-type parameter-problem -m comment --comment 'linuxvm-init:icmp-essential-v4-parameter-problem' -j ACCEPT || true
+      ;;
+    ipv6)
+      iptables_mode_delete_input_rule ipv6 -p ipv6-icmp --icmpv6-type echo-request -m comment --comment 'linuxvm-init:icmp-essential-v6-echo-request' -j ACCEPT || true
+      iptables_mode_delete_input_rule ipv6 -p ipv6-icmp --icmpv6-type destination-unreachable -m comment --comment 'linuxvm-init:icmp-essential-v6-destination-unreachable' -j ACCEPT || true
+      iptables_mode_delete_input_rule ipv6 -p ipv6-icmp --icmpv6-type packet-too-big -m comment --comment 'linuxvm-init:icmp-essential-v6-packet-too-big' -j ACCEPT || true
+      iptables_mode_delete_input_rule ipv6 -p ipv6-icmp --icmpv6-type time-exceeded -m comment --comment 'linuxvm-init:icmp-essential-v6-time-exceeded' -j ACCEPT || true
+      iptables_mode_delete_input_rule ipv6 -p ipv6-icmp --icmpv6-type parameter-problem -m comment --comment 'linuxvm-init:icmp-essential-v6-parameter-problem' -j ACCEPT || true
+      iptables_mode_delete_input_rule ipv6 -p ipv6-icmp --icmpv6-type router-solicitation -m comment --comment 'linuxvm-init:icmp-essential-v6-router-solicitation' -j ACCEPT || true
+      iptables_mode_delete_input_rule ipv6 -p ipv6-icmp --icmpv6-type router-advertisement -m comment --comment 'linuxvm-init:icmp-essential-v6-router-advertisement' -j ACCEPT || true
+      iptables_mode_delete_input_rule ipv6 -p ipv6-icmp --icmpv6-type neighbor-solicitation -m comment --comment 'linuxvm-init:icmp-essential-v6-neighbor-solicitation' -j ACCEPT || true
+      iptables_mode_delete_input_rule ipv6 -p ipv6-icmp --icmpv6-type neighbor-advertisement -m comment --comment 'linuxvm-init:icmp-essential-v6-neighbor-advertisement' -j ACCEPT || true
+      ;;
+  esac
+}
+
+iptables_mode_allow_rule() {
+  local protocol="$1"
+  local value="${2:-}"
+  local stack
+  stack="$(network_stack_refresh)"
+  state_set 'FIREWALL_MODE' 'iptables'
+  case "$protocol" in
+    tcp)
+      nftables_state_add_port "$value"
+      iptables_mode_add_tcp_port "$value" "$stack"
+      ;;
+    udp)
+      nftables_state_add_udp_port "$value"
+      iptables_mode_add_udp_port "$value" "$stack"
+      ;;
+    icmp)
+      state_set 'FIREWALL_ICMP_MODE' 'essential'
+      state_set 'FIREWALL_ALLOW_ICMP' '1'
+      iptables_mode_for_each_enabled_family "$stack" iptables_mode_add_icmp_family
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+iptables_mode_remove_rule() {
+  local protocol="$1"
+  local value="${2:-}"
+  local stack
+  stack="$(network_stack_refresh)"
+  state_set 'FIREWALL_MODE' 'iptables'
+  case "$protocol" in
+    tcp)
+      nftables_state_remove_port "$value"
+      iptables_mode_delete_tcp_port "$value" "$stack"
+      ;;
+    udp)
+      nftables_state_remove_udp_port "$value"
+      iptables_mode_delete_udp_port "$value" "$stack"
+      ;;
+    icmp)
+      state_set 'FIREWALL_ICMP_MODE' 'off'
+      state_set 'FIREWALL_ALLOW_ICMP' '0'
+      iptables_mode_for_each_enabled_family "$stack" iptables_mode_delete_icmp_family
+      ;;
+    *) return 1 ;;
+  esac
 }
 
 nftables_managed_active() {
@@ -634,6 +859,83 @@ nftables_remove_rule() {
       say '协议无效，请输入 tcp、udp 或 icmp。' 'Invalid protocol, use tcp, udp, or icmp.'
       return 1
       ;;
+  esac
+}
+
+firewall_can_modify_current_rules() {
+  case "$(firewall_effective_mode)" in
+    iptables)
+      is_installed iptables || is_installed ip6tables
+      ;;
+    nftables)
+      nftables_managed_active
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+firewall_allow_rule() {
+  local protocol="$1"
+  local value="${2:-}"
+  protocol="$(printf '%s' "$protocol" | tr '[:upper:]' '[:lower:]')"
+  case "$protocol" in
+    tcp|udp)
+      if ! is_valid_port "$value"; then
+        say '端口无效。' 'Invalid port.'
+        return 1
+      fi
+      ;;
+    icmp)
+      value=''
+      ;;
+    *)
+      say '协议无效，请输入 tcp、udp 或 icmp。' 'Invalid protocol, use tcp, udp, or icmp.'
+      return 1
+      ;;
+  esac
+
+  case "$(firewall_effective_mode)" in
+    iptables) iptables_mode_allow_rule "$protocol" "$value" ;;
+    nftables) nftables_allow_rule "$protocol" "$value" ;;
+    *) return 1 ;;
+  esac
+}
+
+firewall_remove_rule() {
+  local protocol="$1"
+  local value="${2:-}"
+  local ssh_port
+  protocol="$(printf '%s' "$protocol" | tr '[:upper:]' '[:lower:]')"
+  case "$protocol" in
+    tcp|udp)
+      if ! is_valid_port "$value"; then
+        say '端口无效。' 'Invalid port.'
+        return 1
+      fi
+      ;;
+    icmp)
+      value=''
+      ;;
+    *)
+      say '协议无效，请输入 tcp、udp 或 icmp。' 'Invalid protocol, use tcp, udp, or icmp.'
+      return 1
+      ;;
+  esac
+
+  if [ "$protocol" = 'tcp' ]; then
+    ssh_port="$(nftables_current_ssh_port)"
+    if [ "$value" = "$ssh_port" ]; then
+      say '拒绝删除当前 SSH 端口放行规则。' 'Refusing to remove the current SSH allow rule.'
+      return 1
+    fi
+  fi
+
+  case "$(firewall_effective_mode)" in
+    iptables) iptables_mode_remove_rule "$protocol" "$value" ;;
+    nftables) nftables_remove_rule "$protocol" "$value" ;;
+    *) return 1 ;;
   esac
 }
 

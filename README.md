@@ -105,7 +105,7 @@ sudo bash vps-init.sh --non-interactive --distro ubuntu24
 - 主菜单 `0) Init 一键顺序配置`：按推荐顺序执行初始化。
 - 主菜单 `1) SSH 管理面板`：SSH 相关操作全部集中管理。
 - 主菜单 `2) Docker 管理面板`：Docker 安装、Compose、代理、日志限制统一管理。
-- 主菜单 `3) 防火墙管理面板`：防火墙状态与规则查看（iptables 模式使用 `iptables/ip6tables -nvL --line-numbers`）、TCP/UDP/ICMP 放行与删除、配置重载。
+- 主菜单 `3) 防火墙管理面板`：防火墙状态与规则查看（iptables 模式使用 `iptables/ip6tables -nvL --line-numbers`）、TCP/UDP/ICMP 放行与删除；iptables 模式下增删规则会直接调用 `iptables/ip6tables`。
 - 主菜单 `4) fail2ban 管理面板`：支持安装/初始化、策略调整、封禁与解封 IP。
 - 主菜单 `5) 系统维护`：系统更新、工具、用户、自动更新管理、logrotate、1panel。
 - 主菜单 `6) Swap 管理`：查看/重配/删除 swap。

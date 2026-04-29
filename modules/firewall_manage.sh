@@ -55,7 +55,7 @@ firewall_show_nftables_rules() {
 
 firewall_show_current_rules() {
   local mode
-  mode="$(state_get 'FIREWALL_MODE')"
+  mode="$(firewall_effective_mode)"
   case "$mode" in
     iptables) firewall_show_iptables_rules ;;
     *) firewall_show_nftables_rules ;;
@@ -78,7 +78,7 @@ firewall_manage() {
   fi
 
   while true; do
-    say '==== nftables 防火墙管理 ====' '==== nftables Firewall Management ===='
+    say '==== 防火墙管理 ====' '==== Firewall Management ===='
     if [ "$LANG_CHOICE" = 'zh' ]; then
       printf '%s\n' '0) 首次安装/初始化防火墙'
       printf '%s\n' '1) 查看当前防火墙状态'
@@ -115,8 +115,8 @@ firewall_manage() {
         firewall_show_current_rules
         ;;
       3)
-        if ! nftables_managed_active; then
-          say 'nftables 尚未初始化，请先执行 0。' 'nftables is not initialized yet; run option 0 first.'
+        if ! firewall_can_modify_current_rules; then
+          say '未检测到可直接修改的防火墙模式，请先执行 0 初始化。' 'No directly manageable firewall mode was detected; run option 0 first.'
           continue
         fi
         ask '输入协议 tcp/udp/icmp：' 'Enter protocol tcp/udp/icmp:' protocol
@@ -133,11 +133,11 @@ firewall_manage() {
             continue
             ;;
         esac
-        nftables_allow_rule "$protocol" "$port"
+        firewall_allow_rule "$protocol" "$port"
         ;;
       4)
-        if ! nftables_managed_active; then
-          say 'nftables 尚未初始化，请先执行 0。' 'nftables is not initialized yet; run option 0 first.'
+        if ! firewall_can_modify_current_rules; then
+          say '未检测到可直接修改的防火墙模式，请先执行 0 初始化。' 'No directly manageable firewall mode was detected; run option 0 first.'
           continue
         fi
         ask '输入协议 tcp/udp/icmp：' 'Enter protocol tcp/udp/icmp:' protocol
@@ -154,14 +154,21 @@ firewall_manage() {
             continue
             ;;
         esac
-        nftables_remove_rule "$protocol" "$port"
+        firewall_remove_rule "$protocol" "$port"
         ;;
       5)
-        if ! nftables_managed_active; then
-          say 'nftables 尚未初始化，请先执行 0。' 'nftables is not initialized yet; run option 0 first.'
-          continue
-        fi
-        nftables_apply_current_state
+        case "$(firewall_effective_mode)" in
+          iptables)
+            say 'iptables 模式下规则即时生效，无需重载；请用 2 查看当前规则。' 'In iptables mode, rules take effect immediately; use option 2 to inspect current rules.'
+            ;;
+          nftables)
+            if ! nftables_managed_active; then
+              say 'nftables 尚未初始化，请先执行 0。' 'nftables is not initialized yet; run option 0 first.'
+              continue
+            fi
+            nftables_apply_current_state
+            ;;
+        esac
         ;;
       6)
         backup_dir="$(state_get 'LAST_LEGACY_FIREWALL_BACKUP')"

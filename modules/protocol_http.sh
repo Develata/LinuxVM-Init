@@ -12,6 +12,6 @@ protocol_allow_http_ufw() {
 }
 
 protocol_allow_http_iptables() {
-  say 'iptables HTTP 放行接口已兼容转发到 nftables。' 'iptables HTTP allow interface is now forwarded to nftables.'
-  nftables_allow_tcp_port "$PROTOCOL_HTTP_PORT"
+  say 'iptables 模式：将通过 iptables/ip6tables 放行 HTTP。' 'iptables mode: allowing HTTP through iptables/ip6tables.'
+  iptables_mode_allow_rule tcp "$PROTOCOL_HTTP_PORT"
 }
