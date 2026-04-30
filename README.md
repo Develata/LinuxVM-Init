@@ -167,7 +167,8 @@ ls -la /etc/linuxvm-init/legacy-firewall-backups/
 - `modules/ssh_common.sh`：SSH 公共能力（端口检测、配置写入）
 - `modules/ssh_port.sh`：SSH 端口与 root 登录策略
 - `modules/ssh_auth.sh`：SSH 密钥登录策略
-- `modules/firewall.sh`：nftables 防火墙初始化、迁移与规则生成
+- `modules/firewall.sh`：防火墙聚合入口（source 子模块，保持外部调用兼容）
+- `modules/firewall/`：防火墙子模块（模式探测、iptables 模式、nftables 渲染/应用、旧规则备份与初始化）
 - `modules/panel_main.sh`：模块入口聚合（source 所有子模块）
 - `modules/`：其他功能模块（防火墙、Docker、swap、fail2ban 等）
 

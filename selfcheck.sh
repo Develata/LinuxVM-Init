@@ -38,18 +38,21 @@ check_file_exists "$BASE_DIR/lib/common.sh"
 check_file_exists "$BASE_DIR/modules/panel_main.sh"
 check_file_exists "$BASE_DIR/modules/network_stack.sh"
 check_file_exists "$BASE_DIR/modules/firewall.sh"
+check_file_exists "$BASE_DIR/modules/firewall/common.sh"
+check_file_exists "$BASE_DIR/modules/firewall/iptables_mode.sh"
+check_file_exists "$BASE_DIR/modules/firewall/nftables_render.sh"
 check_file_exists "$BASE_DIR/modules/safe_mode.sh"
 check_file_exists "$BASE_DIR/modules/snapshot.sh"
 check_file_exists "$BASE_DIR/modules/monitor.sh"
 
-if bash -n "$BASE_DIR/vps-init.sh" "$BASE_DIR/lib/common.sh" "$BASE_DIR"/modules/*.sh "$BASE_DIR/selfcheck.sh"; then
+if bash -n "$BASE_DIR/vps-init.sh" "$BASE_DIR/lib/common.sh" "$BASE_DIR"/modules/*.sh "$BASE_DIR"/modules/firewall/*.sh "$BASE_DIR/selfcheck.sh"; then
   ok 'shell syntax check passed'
 else
   fail 'shell syntax check failed'
 fi
 
 if command -v shellcheck >/dev/null 2>&1; then
-  if shellcheck -x -e SC1091,SC2016 "$BASE_DIR"/install.sh "$BASE_DIR"/vps-init.sh "$BASE_DIR"/uninstall.sh "$BASE_DIR"/selfcheck.sh "$BASE_DIR"/lib/*.sh "$BASE_DIR"/modules/*.sh; then
+  if shellcheck -x -e SC1091,SC2016 "$BASE_DIR"/install.sh "$BASE_DIR"/vps-init.sh "$BASE_DIR"/uninstall.sh "$BASE_DIR"/selfcheck.sh "$BASE_DIR"/lib/*.sh "$BASE_DIR"/modules/*.sh "$BASE_DIR"/modules/firewall/*.sh; then
     ok 'shellcheck passed'
   else
     fail 'shellcheck failed'
