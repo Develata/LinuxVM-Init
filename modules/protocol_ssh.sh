@@ -28,16 +28,22 @@ protocol_allow_ssh_iptables() {
   local port="$1"
   local stack
   say 'iptables 模式：将通过 iptables/ip6tables 放行 SSH 端口。' 'iptables mode: allowing SSH through iptables/ip6tables.'
+  stack="$(network_stack_refresh)"
+  iptables_mode_add_tcp_port "$port" "$stack" || return 1
   state_set 'FIREWALL_MODE' 'iptables'
   state_set 'FIREWALL_SSH_PORT' "$port"
-  stack="$(network_stack_refresh)"
-  iptables_mode_add_tcp_port "$port" "$stack"
+  iptables_mode_persist_rules "$stack"
 }
 
 protocol_allow_ssh_iptables_from_ip() {
   local port="$1"
   local source_ip="$2"
-  say 'iptables 来源 IP 放行暂未单独收敛，改为放行当前 SSH 端口。' 'iptables source allow is not narrowed separately yet; allowing the SSH port.'
+  local stack
+  say 'iptables 模式：将通过 iptables/ip6tables 添加 SSH 来源 IP 白名单。' 'iptables mode: adding an SSH source allow rule through iptables/ip6tables.'
+  stack="$(network_stack_refresh)"
+  iptables_mode_add_tcp_port_from_ip "$port" "$source_ip" "$stack" || return 1
+  state_set 'FIREWALL_MODE' 'iptables'
+  state_set 'FIREWALL_SSH_PORT' "$port"
   state_set 'FIREWALL_SSH_SOURCE_IP' "$source_ip"
-  protocol_allow_ssh_iptables "$port"
+  iptables_mode_persist_rules "$stack"
 }
