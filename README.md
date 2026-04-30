@@ -157,7 +157,8 @@ ls -la /etc/linuxvm-init/legacy-firewall-backups/
 - `VERSION`：脚本语义化版本号（例如 `v1.0.0`）
 - `install.sh`：安装全局命令 `lvm`（创建 wrapper 脚本）
 - `uninstall.sh`：卸载全局命令 `lvm`
-- `selfcheck.sh`：发布前自检脚本（语法、模块加载、关键函数可用性）
+- `selfcheck.sh`：发布前自检入口
+- `selfcheck/`：自检子模块（语法、ShellCheck、模块加载、nftables/network stack/iptables frontend 测试）
 - `lib/common.sh`：公共入口（聚合通用方法）
 - `lib/common_ui.sh`：交互与提示
 - `lib/common_exec.sh`：命令执行、校验、来源 IP 检测
